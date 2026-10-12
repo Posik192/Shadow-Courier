@@ -9,7 +9,7 @@ TILE_SIZE = 48        # viena kartes lauciņa izmērs pikseļos
 PLAYER_SIZE = 32      # spēlētāja kvadrāta izmērs (mazāks par lauciņu, lai tilptu ejas)
 
 # --- SPĒLĒTĀJS ---
-PLAYER_SPEED = 200    # pikseļi sekundē — cik ātrs ir kurjers
+PLAYER_SPEED = 2000    # pikseļi sekundē — cik ātrs ir kurjers
 
 # --- 1. UNIKĀLĀ MEHĀNIKA: gaismas briesmas ---
 LIGHT_RADIUS = 120        # cik lielu laukumu apgaismo viena lampa (pikseļi)
