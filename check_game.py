@@ -7,33 +7,54 @@ from game.level import LEVEL_MAPS, Level
 from game import settings as s
 
 # 1. Karšu pārbaude
-for i, rows in enumerate(LEVEL_MAPS, 1):
-    widths = {len(r) for r in rows}
-    assert len(widths) == 1, f"Līmenis {i}: rindas nav vienāda garuma: {widths}"
-    flat = "".join(rows)
-    assert flat.count("P") == 1, f"Līmenis {i}: jābūt vienam P"
-    assert flat.count("E") == 1, f"Līmenis {i}: jābūt vienai izejai E"
-    # Sasniedzamība: plūdmaiņa no P (durvis skaitām caurlaidīgas)
-    start = None
-    for r, row in enumerate(rows):
-        for c, ch in enumerate(row):
-            if ch == "P":
-                start = (c, r)
+def flood(rows, start, door_is_wall):
+    """Plūdmaiņa no sākuma lauciņa. Ja door_is_wall=True, durvis skaitās siena."""
     seen = {start}
     stack = [start]
     while stack:
         c, r = stack.pop()
         for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             n = (c + dc, r + dr)
-            if n in seen or rows[n[1]][n[0]] == "#":
+            if n in seen:
+                continue
+            ch = rows[n[1]][n[0]]
+            if ch == "#" or (door_is_wall and ch == "D"):
                 continue
             seen.add(n)
             stack.append(n)
+    return seen
+
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    widths = {len(r) for r in rows}
+    assert len(widths) == 1, f"Līmenis {i}: rindas nav vienāda garuma: {widths}"
+    w, h = len(rows[0]), len(rows)
+    # Ārējai robežai jābūt no sienām (nekādu caurumu malās)
+    for c in range(w):
+        assert rows[0][c] == "#" and rows[h - 1][c] == "#", f"Līmenis {i}: caurums robežā rindā 0/{h-1}, kol {c}"
+    for r in range(h):
+        assert rows[r][0] == "#" and rows[r][w - 1] == "#", f"Līmenis {i}: caurums robežā rindā {r}"
+    flat = "".join(rows)
+    assert flat.count("P") == 1, f"Līmenis {i}: jābūt vienam P"
+    assert flat.count("E") == 1, f"Līmenis {i}: jābūt vienai izejai E"
+    start = exit_pos = None
     for r, row in enumerate(rows):
         for c, ch in enumerate(row):
-            if ch in "ECK" and (c, r) not in seen:
+            if ch == "P":
+                start = (c, r)
+            elif ch == "E":
+                exit_pos = (c, r)
+    # Ar atvērtām durvīm viss jāsasniedz
+    seen_open = flood(rows, start, door_is_wall=False)
+    assert exit_pos in seen_open, f"Līmenis {i}: izeja nav sasniedzama pat ar atslēgu!"
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch in "CK" and (c, r) not in seen_open:
                 raise AssertionError(f"Līmenis {i}: '{ch}' ({c},{r}) nav sasniedzams")
-    print(f"Līmenis {i}: OK ({len(rows[0])}x{len(rows)}, sargu: {flat.count('G') + flat.count('V')})")
+    # GALVENĀ PĀRBAUDE: bez atslēgas (durvis = siena) izeju drīkst NESASNIEDZT
+    seen_closed = flood(rows, start, door_is_wall=True)
+    assert exit_pos not in seen_closed, \
+        f"Līmenis {i}: KĻŪDA — izeju var sasniegt apejot durvis (atslēga nav vajadzīga)!"
+    print(f"Līmenis {i}: OK ({w}x{h}, sargu: {flat.count('G') + flat.count('V')}, izeja aiz durvīm ✓)")
 
 # 2. Kustība un siena
 g = GameState()
