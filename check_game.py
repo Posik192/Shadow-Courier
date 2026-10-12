@@ -1,0 +1,107 @@
+"""Ad-hoc pārbaude bez loga: kartes + spēles loģika."""
+import sys
+sys.path.insert(0, r"C:\projects\Shadow-Courier")
+
+from game.game_state import GameState, STATUS_GAME_OVER, STATUS_PLAYING
+from game.level import LEVEL_MAPS, Level
+from game import settings as s
+
+# 1. Karšu pārbaude
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    widths = {len(r) for r in rows}
+    assert len(widths) == 1, f"Līmenis {i}: rindas nav vienāda garuma: {widths}"
+    flat = "".join(rows)
+    assert flat.count("P") == 1, f"Līmenis {i}: jābūt vienam P"
+    assert flat.count("E") == 1, f"Līmenis {i}: jābūt vienai izejai E"
+    # Sasniedzamība: plūdmaiņa no P (durvis skaitām caurlaidīgas)
+    start = None
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch == "P":
+                start = (c, r)
+    seen = {start}
+    stack = [start]
+    while stack:
+        c, r = stack.pop()
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            n = (c + dc, r + dr)
+            if n in seen or rows[n[1]][n[0]] == "#":
+                continue
+            seen.add(n)
+            stack.append(n)
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch in "ECK" and (c, r) not in seen:
+                raise AssertionError(f"Līmenis {i}: '{ch}' ({c},{r}) nav sasniedzams")
+    print(f"Līmenis {i}: OK ({len(rows[0])}x{len(rows)}, sargu: {flat.count('G') + flat.count('V')})")
+
+# 2. Kustība un siena
+g = GameState()
+x0 = g.player_x
+g.update(0.1, 1, 0, False, False)
+assert g.player_x > x0, "spēlētājam vajadzēja pārvietoties pa labi"
+g.update(0.1, -1, 0, False, False)
+g.update(0.5, -1, 0, False, False)  # siena kreisajā pusē — nedrīkst iziet cauri
+assert g.player_x > 0, "spēlētājs izgāja caur sienu!"
+print("Kustība un sienas: OK")
+
+# 3. Monēta dod punktus
+g = GameState()
+coin = next(iter(g.level.coins))
+g.player_x = coin[0] * s.TILE_SIZE + 8
+g.player_y = coin[1] * s.TILE_SIZE + 8
+g.update(0.01, 0, 0, False, False)
+assert g.score == s.COIN_POINTS, f"monēta nedeva punktus: {g.score}"
+print("Monēta: OK (+10)")
+
+# 4. Lampa: izslēgšana un cooldown
+g = GameState()
+lamp = next(iter(g.level.lamps))
+g.player_x = lamp[0] * s.TILE_SIZE + 8
+g.player_y = lamp[1] * s.TILE_SIZE + 8
+g.update(0.01, 0, 0, True, False)
+assert g.level.lamps[lamp] > 0, "lampa neizslēdzās"
+assert g.lamp_cooldown > 0, "cooldown neieslēdzās"
+print("Lampas izslēgšana: OK")
+
+# 5. Gaisma noķer, ja stāv par ilgu
+g = GameState()
+g.player_x = lamp[0] * s.TILE_SIZE + 8
+g.player_y = lamp[1] * s.TILE_SIZE + 8
+for _ in range(int(s.LIGHT_TIME_LIMIT * 60) + 5):
+    g.update(1 / 60, 0, 0, False, False)
+assert g.status == STATUS_GAME_OVER and "gaism" in g.game_over_reason
+print(f"Gaismas briesmas: OK ({g.game_over_reason})")
+
+# 6. Atslēga + durvis
+g = GameState()
+k = g.level.key_pos
+g.player_x = k[0] * s.TILE_SIZE + 8
+g.player_y = k[1] * s.TILE_SIZE + 8
+g.update(0.01, 0, 0, False, True)
+assert g.has_key and g.level.key_pos is None and g.score == s.KEY_POINTS
+d = g.level.door_pos
+g.player_x = d[0] * s.TILE_SIZE + 8
+g.player_y = d[1] * s.TILE_SIZE + 8 - s.TILE_SIZE
+g.update(0.01, 0, 0, False, True)
+assert g.level.door_open, "durvis neatvērās ar atslēgu"
+print("Atslēga un durvis: OK (+25)")
+
+# 7. Izeja -> nākamais līmenis ar bonusu
+g = GameState()
+e = g.level.exit_pos
+g.player_x = e[0] * s.TILE_SIZE + 8
+g.player_y = e[1] * s.TILE_SIZE + 8
+g.update(0.01, 0, 0, False, False)
+assert g.level_number == 2 and g.score >= s.LEVEL_BONUS and g.status == STATUS_PLAYING
+print(f"Izeja: OK (līmenis 2, punkti: {g.score})")
+
+# 8. Sargs noķer
+g = GameState()
+guard = g.level.guards[0]
+g.player_x, g.player_y = guard.x, guard.y
+g.update(0.01, 0, 0, False, False)
+assert g.status == STATUS_GAME_OVER
+print(f"Sargs: OK ({g.game_over_reason})")
+
+print("\nVISI TESTI IZJAUTI ✅")
