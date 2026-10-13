@@ -26,6 +26,11 @@ for frame in range(3600):
     moves = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, -1)]
     mx, my = moves[direction]
     state.update(dt, mx, my, frame % 90 == 0, frame % 120 == 0)
+    # Ja līmenis izpildīts (vai uzvara), simulācija uzreiz turpina tālāk
+    if state.status == "level_complete":
+        state.next_level()
+    elif state.status in ("game_over", "won"):
+        state.__init__()
     draw_world(surface, state, sprites, (mx, my) if (mx, my) != (0, 0) else (0, 1), True)
     draw_hud(surface, state, font, sprites)
     pygame.display.flip()

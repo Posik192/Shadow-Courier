@@ -15,7 +15,8 @@ import sys
 import pygame
 
 from game import settings as gs
-from game.game_state import GameState, STATUS_PLAYING, STATUS_GAME_OVER, STATUS_WON
+from game.game_state import (GameState, STATUS_PLAYING, STATUS_GAME_OVER,
+                             STATUS_WON, STATUS_LEVEL_COMPLETE)
 from game.guard import GUARD_SIZE
 
 # --- LOGA UZSTĀDĪJUMI ---
@@ -37,6 +38,16 @@ COLOR_LAMP_OFF = (80, 80, 90)   # izslēgta lampa
 COLOR_TEXT = (230, 230, 235)    # teksts
 COLOR_WARNING = (250, 80, 60)   # brīdinājums (gaismas taimeris)
 
+# --- EKRĀNU (izvēļņu) TERMINĀĻA STILS ---
+COLOR_PANEL_BG = (13, 21, 32)      # paneļa fons — tumši zils
+COLOR_PANEL_EDGE = (22, 32, 46)    # gaišāka malas josla panelim
+COLOR_ACCENT = (242, 182, 74)      # dzeltens akcents (kursors, kontūras)
+COLOR_OK = (90, 200, 120)          # zaļš — izeja / līmenis izpildīts
+COLOR_BAD = (230, 80, 70)          # sarkans — noķerts
+COLOR_DIM = (120, 130, 145)        # pelēks — palīgteiksti
+PANEL_WIDTH = 520                  # izvēlnes "kartītes" platums (pikseļi)
+PANEL_BORDER = 3                   # paneļa dzeltenās kontūras biezums
+
 # --- APGAISMOJUMA UZSTĀDĪJUMI ---
 DARKNESS_ALPHA = 175        # cik tumša ir noliktava ārpus gaismas (0–255)
 GLOW_COLOR = (255, 200, 90) # lampu un lukturu siltā dzeltenā krāsa
@@ -50,6 +61,12 @@ SCREEN_GAME = "game"
 SCREEN_PAUSED = "paused"
 SCREEN_GAME_OVER = "game_over"
 SCREEN_WON = "won"
+SCREEN_LEVEL_COMPLETE = "level_complete"
+
+# Izvēļņu opcijas (termināļa stilā: ▶ kursors, bultiņas + Enter)
+MENU_OPTIONS = ["NEW GAME", "QUIT"]
+PAUSED_OPTIONS = ["RESUME", "RESTART LEVEL", "MAIN MENU"]
+CONTROLS_HELP = "WASD Move | SPACE Disable lamp | E Interact"
 
 
 # Cik lielus sprites zīmēt spēlē (pikseļi)
@@ -109,17 +126,56 @@ def load_sprites() -> dict:
             frames = [sprites[name]]  # rezerves variants: viens kadrs
         sprites[name + "_frames"] = frames
 
-    # Lampu varianti (lamp_1..4.png) — dažādas lampas dažādās vietās
-    lamp_frames = []
-    for i in range(1, 5):
-        path = os.path.join("assets", f"lamp_{i}.png")
-        if os.path.exists(path):
-            img = pygame.image.load(path).convert_alpha()
-            lamp_frames.append(pygame.transform.smoothscale(
-                img, (gs.TILE_SIZE, gs.TILE_SIZE)))
-    if not lamp_frames:
-        lamp_frames = [sprites["lamp_on"]]
-    sprites["lamp_frames"] = lamp_frames
+    # Virzienu sprites: player_down/up/left/right.png (un guard_*).
+    # Cits aģents tās gatavo — tāpēc šeit viss ir "mīksts":
+    #   * ja left/right nav, ņemam pretējā virziena spoguļattēlu;
+    #   * ja vispār nav nevienas virzienu bildes, vārdnīcā ir None
+    #     un draw_world lieto veco variantu (kadri + rotācija).
+    for name in ("player", "guard"):
+        size = SPRITE_SIZES[name]
+        directions = {}
+        for direction in ("down", "up", "left", "right"):
+            path = os.path.join("assets", f"{name}_{direction}.png")
+            if os.path.exists(path):
+                img = pygame.image.load(path).convert_alpha()
+                directions[direction] = pygame.transform.smoothscale(
+                    img, (size, size))
+            else:
+                directions[direction] = None
+        # Spoguļattēls, ja trūkst tieši viena no sānu bildēm
+        if directions["left"] is None and directions["right"] is not None:
+            directions["left"] = pygame.transform.flip(
+                directions["right"], True, False)
+        if directions["right"] is None and directions["left"] is not None:
+            directions["right"] = pygame.transform.flip(
+                directions["left"], True, False)
+        # Ja ir kaut viena virzienu bilde — aizpildām pārējos trūkumus
+        # ar to, kas ir (prioritāte: down -> up -> left -> right)
+        existing = [directions[d] for d in ("down", "up", "left", "right")
+                    if directions[d] is not None]
+        if existing:
+            for direction in directions:
+                if directions[direction] is None:
+                    directions[direction] = existing[0]
+            sprites[name + "_dir"] = directions
+        else:
+            sprites[name + "_dir"] = None
+
+    # Dedzinošā lampa: ja ir jaunā rūpnieciskā lampa (lamp_on.png), lieto to
+    # visām lampām; citādi — vecie varianti lamp_1..4.png pa vietām
+    if sprites["lamp_on"] is not None:
+        sprites["lamp_frames"] = [sprites["lamp_on"]]
+    else:
+        lamp_frames = []
+        for i in range(1, 5):
+            path = os.path.join("assets", f"lamp_{i}.png")
+            if os.path.exists(path):
+                img = pygame.image.load(path).convert_alpha()
+                lamp_frames.append(pygame.transform.smoothscale(
+                    img, (gs.TILE_SIZE, gs.TILE_SIZE)))
+        if not lamp_frames:
+            lamp_frames = [sprites["lamp_on"]]
+        sprites["lamp_frames"] = lamp_frames
 
     # HUD ikonas (sirds, monēta, atslēga) — katrā divas versijas:
     # parastā un tumšā ("tukšā", piem., zaudēta dzīvība vai nav atslēgas)
@@ -372,13 +428,17 @@ def main() -> None:
     world_height = state.level.height * gs.TILE_SIZE
     window = pygame.display.set_mode((world_width, world_height + HUD_HEIGHT))
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("arial", 24)
-    big_font = pygame.font.SysFont("arial", 48, bold=True)
+    # Termināļa stila ekrāniem — monospace fonts
+    font = pygame.font.SysFont("consolas", 24)
+    big_font = pygame.font.SysFont("consolas", 48, bold=True)
+    small_font = pygame.font.SysFont("consolas", 18)
     sprites = load_sprites()
+    fonts = {"font": font, "big": big_font, "small": small_font}
 
     current_screen = SCREEN_MENU
     player_facing = (0, 1)  # kurp spēlētājs skatās (sākumā — uz leju)
     player_moving = False   # vai spēlētājs kustas (animācijai)
+    selection = 0           # izvēllnes ▶ kursora pozīcija (0 = pirmā opcija)
 
     while True:
         # dt = cik sekundes pagāja kopš iepriekšējā kadra (lai ātrums
@@ -391,7 +451,8 @@ def main() -> None:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
-                current_screen = handle_key(event.key, current_screen, state)
+                current_screen, selection = handle_key(
+                    event.key, current_screen, selection, state)
 
         # --- 2. solis: atjaunināšana (tikai ja spēle rit) ---
         if current_screen == SCREEN_GAME:
@@ -412,43 +473,58 @@ def main() -> None:
                 current_screen = SCREEN_GAME_OVER
             elif state.status == STATUS_WON:
                 current_screen = SCREEN_WON
+            elif state.status == STATUS_LEVEL_COMPLETE:
+                current_screen = SCREEN_LEVEL_COMPLETE
+                selection = 0
         else:
             # Pauzē/izvēlnē spēlētājs nekustas — animācija apstājas
             player_moving = False
 
         # --- 3. solis: zīmēšana ---
-        window.fill(COLOR_FLOOR)
+        window.fill(COLOR_PANEL_BG)
         if current_screen == SCREEN_MENU:
-            draw_menu(window, font, big_font)
+            draw_menu(window, fonts, selection)
         else:
             draw_world(window, state, sprites, player_facing, player_moving)
             draw_hud(window, state, font, sprites)
             if current_screen == SCREEN_PAUSED:
-                draw_center_text(window, big_font, font, "PAUZE",
-                                 "P — turpināt | Esc — izvēlne")
+                draw_paused(window, fonts, selection)
+            elif current_screen == SCREEN_LEVEL_COMPLETE:
+                draw_level_complete(window, fonts, state)
             elif current_screen == SCREEN_GAME_OVER:
-                draw_center_text(window, big_font, font, "SPĒLE BEIGUSIES",
-                                 state.game_over_reason + "  |  R — no jauna | Esc — izvēlne")
+                draw_game_over(window, fonts, state)
             elif current_screen == SCREEN_WON:
-                draw_center_text(window, big_font, font, "TU UZVARĒJI!",
-                                 f"Punkti: {state.score}  |  R — no jauna | Esc — izvēlne")
+                draw_won(window, fonts, state)
 
         pygame.display.flip()
 
 
-def handle_key(key: int, current_screen: str, state: GameState) -> str:
-    """Apstrādā vienu taustiņa nospiešanu un atgriež jauno ekrānu."""
+def handle_key(key: int, current_screen: str, selection: int,
+               state: GameState) -> tuple[str, int]:
+    """Apstrādā vienu taustiņa nospiešanu.
+
+    Atgriež (jaunais_ekrāns, jaunā_kursora_pozīcija).
+    Bultiņas augša/leja kustina ▶ kursoru, Enter izvēlas opciju.
+    """
     if current_screen == SCREEN_MENU:
-        if key == pygame.K_RETURN:
-            return SCREEN_GAME
-        if key in (pygame.K_ESCAPE, pygame.K_q):
+        if key in (pygame.K_UP, pygame.K_w):
+            selection = (selection - 1) % len(MENU_OPTIONS)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            selection = (selection + 1) % len(MENU_OPTIONS)
+        elif key == pygame.K_RETURN:
+            if MENU_OPTIONS[selection] == "QUIT":
+                pygame.quit()
+                sys.exit()
+            state.__init__()   # jauna spēle no 1. līmeņa
+            return SCREEN_GAME, 0
+        elif key in (pygame.K_ESCAPE, pygame.K_q):
             pygame.quit()
             sys.exit()
     elif current_screen == SCREEN_GAME:
         if key == pygame.K_p:
-            return SCREEN_PAUSED
+            return SCREEN_PAUSED, 0
         if key == pygame.K_ESCAPE:
-            return SCREEN_MENU
+            return SCREEN_MENU, 0
         if key == pygame.K_SPACE:
             # Space = 2. mehānika: izslēgt tuvāko lampu (viena darbība)
             state.update(0.0, 0, 0, True, False)
@@ -456,19 +532,40 @@ def handle_key(key: int, current_screen: str, state: GameState) -> str:
             # E = paņemt atslēgu / atvērt durvis (viena darbība)
             state.update(0.0, 0, 0, False, True)
     elif current_screen == SCREEN_PAUSED:
-        if key == pygame.K_p:
-            return SCREEN_GAME
-        if key == pygame.K_ESCAPE:
-            return SCREEN_MENU
+        if key in (pygame.K_UP, pygame.K_w):
+            selection = (selection - 1) % len(PAUSED_OPTIONS)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            selection = (selection + 1) % len(PAUSED_OPTIONS)
+        elif key in (pygame.K_RETURN, pygame.K_p):
+            if key == pygame.K_p:  # P = ātrais ceļš uz RESUME
+                return SCREEN_GAME, 0
+            option = PAUSED_OPTIONS[selection]
+            if option == "RESUME":
+                return SCREEN_GAME, 0
+            if option == "RESTART LEVEL":
+                state.load_level(state.level_number)
+                state.status = STATUS_PLAYING
+                return SCREEN_GAME, 0
+            # MAIN MENU: atiestata spēli, lai nākamā NEW GAME būtu tīra
+            state.__init__()
+            return SCREEN_MENU, 0
+        elif key == pygame.K_ESCAPE:
+            state.__init__()
+            return SCREEN_MENU, 0
+    elif current_screen == SCREEN_LEVEL_COMPLETE:
+        if key == pygame.K_RETURN:
+            # Enter = ielādēt nākamo līmeni
+            state.next_level()
+            return SCREEN_GAME, 0
     elif current_screen in (SCREEN_GAME_OVER, SCREEN_WON):
         if key == pygame.K_r:
             # R = sākt jaunu spēli no 1. līmeņa
             state.__init__()
-            return SCREEN_GAME
+            return SCREEN_GAME, 0
         if key == pygame.K_ESCAPE:
             state.__init__()
-            return SCREEN_MENU
-    return current_screen
+            return SCREEN_MENU, 0
+    return current_screen, selection
 
 
 # --- ZĪMĒŠANAS FUNKCIJAS (katra zīmē vienu lietu) ---
@@ -476,6 +573,30 @@ def handle_key(key: int, current_screen: str, state: GameState) -> str:
 
 # Virziens (x, y) -> rotācijas leņķis bildēm (sprites zīmēti "skatās uz leju")
 FACING_ANGLES = {(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}
+
+# Virziens (x, y) -> virzienu sprites vārdnīcas atslēga
+FACING_NAMES = {(0, 1): "down", (0, -1): "up", (1, 0): "right", (-1, 0): "left"}
+
+
+def _pick_character_sprite(sprites: dict, name: str, facing: tuple[int, int],
+                           now: int, frame_offset: int, moving: bool) -> tuple:
+    """Izvēlas bildi spēlētājam/sargam un rotācijas leņķi.
+
+    Ja ir virzienu sprites (name_dir vārdnīca) — ņem pareizo bildi,
+    rotācijas nav, paliek tikai soļu šūpošanās (to pieskaita izsaucējs).
+    Ja virzienu bilžu nav — vecais variants: soļu kadri + rotācija.
+    Atgriež (bilde, rotācijas_leņķis).
+    """
+    dir_sprites = sprites.get(name + "_dir")
+    if dir_sprites is not None:
+        # Diagonālei (piem., (1, -1)) nav savas bildes — rādam "down"
+        return dir_sprites[FACING_NAMES.get(facing, "down")], 0.0
+    frames = sprites[name + "_frames"]
+    if moving:
+        frame = (now // FRAME_SWITCH_MS + frame_offset) % len(frames)
+    else:
+        frame = 0
+    return frames[frame], FACING_ANGLES.get(facing, 0)
 
 
 def draw_world(window: pygame.Surface, state: GameState,
@@ -529,9 +650,8 @@ def draw_world(window: pygame.Surface, state: GameState,
         prop_name = PROP_SPRITES[(col * 7 + row * 13) % len(PROP_SPRITES)]
         draw_sprite(window, sprites[prop_name], col * t, row * t, t, COLOR_WALL)
 
-    # Sargi (pagriežas kustības virzienā; soļu animācija rit pastāvīgi,
-    # jo sargs vienmēr patrulē)
-    guard_frames = sprites["guard_frames"]
+    # Sargi (pagriežas kustības virzienā; sargs vienmēr patrulē,
+    # tāpēc šūpošanās un kadru animācija rit pastāvīgi)
     for guard in level.guards:
         if guard.horizontal:
             guard_dir = (guard.direction, 0)
@@ -539,22 +659,22 @@ def draw_world(window: pygame.Surface, state: GameState,
             guard_dir = (0, guard.direction)
         # Nobīde no sarga pozīcijas, lai visi sargi neietu sinhroni
         offset = (int(guard.x) + int(guard.y)) // 10
-        frame = (now // FRAME_SWITCH_MS + offset) % len(guard_frames)
-        draw_sprite(window, guard_frames[frame], guard.x, guard.y, GUARD_SIZE,
-                    COLOR_GUARD, FACING_ANGLES[guard_dir])
+        sprite, angle = _pick_character_sprite(
+            sprites, "guard", guard_dir, now, offset, moving=True)
+        sway = SWAY_DEGREES * math.sin(now * 0.02 + offset)
+        draw_sprite(window, sprite, guard.x, guard.y, GUARD_SIZE,
+                    COLOR_GUARD, angle + sway)
 
     # Spēlētājs (kurjers, pagriežas kustības virzienā)
-    player_frames = sprites["player_frames"]
     if player_moving:
-        frame = (now // FRAME_SWITCH_MS) % len(player_frames)
         # Soļu šūpošanās: sprite viegli griežas pa labi/kreisi (sinusa vilnis)
         sway = SWAY_DEGREES * math.sin(now * 0.02)
     else:
-        frame = 0   # stāvot rādam pirmo kadru un nešūpojamies
         sway = 0.0
-    draw_sprite(window, player_frames[frame], state.player_x, state.player_y,
-                gs.PLAYER_SIZE, COLOR_PLAYER,
-                FACING_ANGLES.get(player_facing, 0) + sway)
+    sprite, angle = _pick_character_sprite(
+        sprites, "player", player_facing, now, 0, player_moving)
+    draw_sprite(window, sprite, state.player_x, state.player_y,
+                gs.PLAYER_SIZE, COLOR_PLAYER, angle + sway)
 
     # Tumsa + gaismas PĒC visa cita — tā "nosedz" pasauli,
     # izņemot vietas, kur deg lampas un spīd sargu lukturi
@@ -658,30 +778,169 @@ def draw_hud(window: pygame.Surface, state: GameState,
     draw_top_bar(window, state, font)
 
 
-def draw_menu(window: pygame.Surface, font: pygame.font.Font,
-              big_font: pygame.font.Font) -> None:
-    """Uzzīmē galveno izvēlni."""
-    draw_center_text(window, big_font, font, "SHADOW COURIER",
-                     "Enter — spēlēt | Esc — iziet",
-                     extra="Izdzēs lampas, apiet sargus un aiznes paketi līdz izejai!")
+# --- TERMINĀĻA STILA EKRĀNI (izvēlnes, pauze, beigu ekrāni) ---
+#
+# Visi ekrāni zīmē "kartīti" ekrāna centrā: tumši zils panelis ar
+# dzeltenu kontūru, monospace fonts, izvēlnes ar ▶ kursoru.
 
 
-def draw_center_text(window: pygame.Surface, big_font: pygame.font.Font,
-                     font: pygame.font.Font, title: str, subtitle: str,
-                     extra: str = "") -> None:
-    """Uzzīmē lielu virsrakstu ekrāna vidū un mazāku tekstu zem tā."""
-    cx = window.get_width() // 2
-    cy = window.get_height() // 2
+def draw_panel(window: pygame.Surface, panel_height: int) -> pygame.Rect:
+    """Uzzīmē tumšo paneļa "kartīti" ekrāna centrā un atgriež tās Rect.
 
-    title_img = big_font.render(title, True, COLOR_TEXT)
-    window.blit(title_img, title_img.get_rect(center=(cx, cy - 60)))
+    Kartīte: tumši zils fons, gaišāka iekšējā mala un dzeltena kontūra.
+    """
+    width, height = window.get_size()
+    rect = pygame.Rect(0, 0, PANEL_WIDTH, panel_height)
+    rect.center = (width // 2, height // 2)
+    # Nedaudz caurspīdīgs tumšs fons pār visu ekrānu (pasaule aiz paneļa)
+    shade = pygame.Surface((width, height), pygame.SRCALPHA)
+    shade.fill((0, 0, 0, 140))
+    window.blit(shade, (0, 0))
+    # Kartīte: fons + iekšējā mala + dzeltenā kontūra
+    pygame.draw.rect(window, COLOR_PANEL_BG, rect)
+    inner = rect.inflate(-12, -12)
+    pygame.draw.rect(window, COLOR_PANEL_EDGE, inner, 2)
+    pygame.draw.rect(window, COLOR_ACCENT, rect, PANEL_BORDER)
+    return rect
 
-    if extra:
-        extra_img = font.render(extra, True, COLOR_COIN)
-        window.blit(extra_img, extra_img.get_rect(center=(cx, cy)))
 
-    sub_img = font.render(subtitle, True, COLOR_TEXT)
-    window.blit(sub_img, sub_img.get_rect(center=(cx, cy + 60)))
+def draw_cursor_triangle(window: pygame.Surface, x: int, y_center: int,
+                         size: int = 14) -> None:
+    """Uzzīmē dzeltenu ▶ kursora trīsstūri (rāda pa labi).
+
+    Zīmējam kā daudzstūri, nevis fonta simbolu — konsolas fontā
+    '▶' burtam Windows reizēm nav glifi un tas rādās kā kvadrāts.
+    """
+    half = size // 2
+    pygame.draw.polygon(window, COLOR_ACCENT,
+                        [(x, y_center - half), (x, y_center + half),
+                         (x + size, y_center)])
+
+
+def draw_menu_options(window: pygame.Surface, font: pygame.font.Font,
+                      options: list[str], selection: int,
+                      cx: int, y: int, line_height: int = 40) -> int:
+    """Uzzīmē izvēlnes opcijas ar ▶ kursoru. Atgriež y zem izvēlnes."""
+    for i, option in enumerate(options):
+        if i == selection:
+            # Izvēlētā opcija: dzeltena ar kursoru
+            text = font.render(option, True, COLOR_ACCENT)
+            draw_cursor_triangle(window, cx - text.get_width() // 2 - 36,
+                                 y + i * line_height + text.get_height() // 2)
+        else:
+            text = font.render(option, True, COLOR_TEXT)
+        window.blit(text, text.get_rect(center=(cx, y + i * line_height
+                                                + text.get_height() // 2)))
+    return y + len(options) * line_height
+
+
+def draw_menu(window: pygame.Surface, fonts: dict, selection: int) -> None:
+    """Galvenā izvēlne: virsraksts + NEW GAME / QUIT + vadības palīgs."""
+    rect = draw_panel(window, 360)
+    cx = rect.centerx
+    title = fonts["big"].render("SHADOW COURIER", True, COLOR_TEXT)
+    window.blit(title, title.get_rect(center=(cx, rect.top + 56)))
+    # Dzeltens svītrojums zem virsraksta
+    pygame.draw.line(window, COLOR_ACCENT,
+                     (rect.left + 40, rect.top + 92),
+                     (rect.right - 40, rect.top + 92), 2)
+    y = draw_menu_options(window, fonts["font"], MENU_OPTIONS, selection,
+                          cx, rect.top + 130)
+    help_img = fonts["small"].render(CONTROLS_HELP, True, COLOR_DIM)
+    window.blit(help_img, help_img.get_rect(center=(cx, rect.bottom - 36)))
+
+
+def draw_paused(window: pygame.Surface, fonts: dict, selection: int) -> None:
+    """Pauzes ekrāns: RESUME / RESTART LEVEL / MAIN MENU."""
+    rect = draw_panel(window, 340)
+    cx = rect.centerx
+    title = fonts["big"].render("PAUSED", True, COLOR_TEXT)
+    window.blit(title, title.get_rect(center=(cx, rect.top + 56)))
+    pygame.draw.line(window, COLOR_ACCENT,
+                     (rect.left + 40, rect.top + 92),
+                     (rect.right - 40, rect.top + 92), 2)
+    draw_menu_options(window, fonts["font"], PAUSED_OPTIONS, selection,
+                      cx, rect.top + 130)
+
+
+def _format_time(seconds: float) -> str:
+    """Sekundes -> 'mm:ss' teksts LEVEL COMPLETE statistikai."""
+    minutes = int(seconds) // 60
+    secs = int(seconds) % 60
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def draw_level_complete(window: pygame.Surface, fonts: dict,
+                        state: GameState) -> None:
+    """LEVEL COMPLETE ekrāns: statistika (monētas, laiks, punkti) + Enter."""
+    rect = draw_panel(window, 380)
+    cx = rect.centerx
+    title = fonts["big"].render("LĪMENIS IZPILDĪTS", True, COLOR_OK)
+    window.blit(title, title.get_rect(center=(cx, rect.top + 52)))
+    sub = fonts["font"].render(f"LEVEL {state.level_number}", True, COLOR_DIM)
+    window.blit(sub, sub.get_rect(center=(cx, rect.top + 96)))
+    pygame.draw.line(window, COLOR_ACCENT,
+                     (rect.left + 40, rect.top + 124),
+                     (rect.right - 40, rect.top + 124), 2)
+
+    # Statistika: kreisajā pusē nosaukums, labajā — vērtība
+    stats = state.level_stats or {}
+    rows = [
+        ("MONĒTAS", f"{stats.get('coins', 0)} / {stats.get('coins_total', 0)}"),
+        ("LAIKS", _format_time(stats.get("time", 0.0))),
+        ("PUNKTI", str(stats.get("score", state.score))),
+    ]
+    y = rect.top + 158
+    for label, value in rows:
+        label_img = fonts["font"].render(label, True, COLOR_DIM)
+        value_img = fonts["font"].render(value, True, COLOR_TEXT)
+        window.blit(label_img, (rect.left + 60, y))
+        window.blit(value_img, (rect.right - 60 - value_img.get_width(), y))
+        y += 40
+
+    hint = fonts["font"].render("ENTER — NEXT LEVEL", True, COLOR_ACCENT)
+    window.blit(hint, hint.get_rect(center=(cx, rect.bottom - 44)))
+    draw_cursor_triangle(window, cx - hint.get_width() // 2 - 30,
+                         rect.bottom - 44)
+
+
+def draw_game_over(window: pygame.Surface, fonts: dict,
+                   state: GameState) -> None:
+    """GAME OVER ekrāns: NOĶERTS (sarkans) + iemesls + opcijas."""
+    rect = draw_panel(window, 340)
+    cx = rect.centerx
+    title = fonts["big"].render("NOĶERTS", True, COLOR_BAD)
+    window.blit(title, title.get_rect(center=(cx, rect.top + 56)))
+    pygame.draw.line(window, COLOR_ACCENT,
+                     (rect.left + 40, rect.top + 92),
+                     (rect.right - 40, rect.top + 92), 2)
+    reason = fonts["font"].render(state.game_over_reason, True, COLOR_TEXT)
+    window.blit(reason, reason.get_rect(center=(cx, rect.top + 140)))
+    score = fonts["font"].render(f"PUNKTI  {state.score}", True, COLOR_DIM)
+    window.blit(score, score.get_rect(center=(cx, rect.top + 184)))
+    hint = fonts["font"].render("R — TRY AGAIN    ESC — MAIN MENU",
+                                True, COLOR_ACCENT)
+    window.blit(hint, hint.get_rect(center=(cx, rect.bottom - 44)))
+    draw_cursor_triangle(window, cx - hint.get_width() // 2 - 30,
+                         rect.bottom - 44)
+
+
+def draw_won(window: pygame.Surface, fonts: dict, state: GameState) -> None:
+    """Uzvaras ekrāns (pēdējais līmenis izietas): UZVARA! + punkti."""
+    rect = draw_panel(window, 320)
+    cx = rect.centerx
+    title = fonts["big"].render("UZVARA!", True, COLOR_OK)
+    window.blit(title, title.get_rect(center=(cx, rect.top + 56)))
+    pygame.draw.line(window, COLOR_ACCENT,
+                     (rect.left + 40, rect.top + 92),
+                     (rect.right - 40, rect.top + 92), 2)
+    score = fonts["font"].render(f"PUNKTI  {state.score}", True, COLOR_TEXT)
+    window.blit(score, score.get_rect(center=(cx, rect.top + 140)))
+    hint = fonts["font"].render("R — TRY AGAIN    ESC — MAIN MENU",
+                                True, COLOR_ACCENT)
+    window.blit(hint, hint.get_rect(center=(cx, rect.bottom - 44)))
+    draw_cursor_triangle(window, cx - hint.get_width() // 2 - 30,
+                         rect.bottom - 44)
 
 
 if __name__ == "__main__":

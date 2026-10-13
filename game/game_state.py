@@ -15,6 +15,7 @@ from game.guard import GUARD_SIZE
 STATUS_PLAYING = "playing"
 STATUS_GAME_OVER = "game_over"
 STATUS_WON = "won"
+STATUS_LEVEL_COMPLETE = "level_complete"  # līmenis izpildīts, gaida Enter
 
 
 class GameState:
@@ -27,6 +28,7 @@ class GameState:
         self.level_number = 1
         self.status = STATUS_PLAYING
         self.game_over_reason = ""  # kāpēc spēle beidzās (sargs vai gaisma)
+        self.level_stats = {}       # pēdējā pabeigtā līmeņa statistika
         self.load_level(1)
 
     def load_level(self, number: int) -> None:
@@ -210,7 +212,7 @@ class GameState:
                     self.message = "Vajag atslēgu!"
 
     def _check_exit(self) -> None:
-        """Ja spēlētājs sasniedz izeju — nākamais līmenis vai uzvara."""
+        """Ja spēlētājs sasniedz izeju — līmenis izpildīts vai uzvara."""
         tile = self.level.tile_at_pixel(*self.player_center())
         if tile != self.level.exit_pos:
             return
@@ -219,5 +221,19 @@ class GameState:
         self.score += s.LEVEL_BONUS + int(time_left * s.TIME_BONUS_PER_SECOND)
         if self.level_number >= len(LEVEL_MAPS):
             self.status = STATUS_WON
-        else:
-            self.load_level(self.level_number + 1)
+            return
+        # Nav pēdējais līmenis: apstājamies uz "līmenis izpildīts" ekrāna.
+        # Klients parādīs statistiku un pēc Enter izsauks next_level().
+        coins_total = self.coins_collected + len(self.level.coins)
+        self.level_stats = {
+            "coins": self.coins_collected,
+            "coins_total": coins_total,
+            "time": self.level_time,
+            "score": self.score,
+        }
+        self.status = STATUS_LEVEL_COMPLETE
+
+    def next_level(self) -> None:
+        """Ielādē nākamo līmeni un turpina spēli (Enter LEVEL COMPLETE ekrānā)."""
+        self.load_level(self.level_number + 1)
+        self.status = STATUS_PLAYING

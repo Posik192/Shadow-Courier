@@ -116,14 +116,18 @@ g.update(0.01, 0, 0, False, True)
 assert g.level.door_open, "durvis neatvērās ar atslēgu"
 print("Atslēga un durvis: OK (+25)")
 
-# 7. Izeja -> nākamais līmenis ar bonusu
+# 7. Izeja -> "līmenis izpildīts" ar bonusu, tad next_level() -> līmenis 2
+from game.game_state import STATUS_LEVEL_COMPLETE
 g = GameState()
 e = g.level.exit_pos
 g.player_x = e[0] * s.TILE_SIZE + 8
 g.player_y = e[1] * s.TILE_SIZE + 8
 g.update(0.01, 0, 0, False, False)
-assert g.level_number == 2 and g.score >= s.LEVEL_BONUS and g.status == STATUS_PLAYING
-print(f"Izeja: OK (līmenis 2, punkti: {g.score})")
+assert g.status == STATUS_LEVEL_COMPLETE and g.score >= s.LEVEL_BONUS
+assert g.level_stats["coins_total"] > 0, "level_stats nesaglabāja statistiku"
+g.next_level()
+assert g.level_number == 2 and g.status == STATUS_PLAYING
+print(f"Izeja: OK (līmenis izpildīts -> līmenis 2, punkti: {g.score})")
 
 # 8. Sargs noņem dzīvību; pie 0 dzīvībām — spēles beigas
 g = GameState()
