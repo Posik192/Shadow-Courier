@@ -168,9 +168,12 @@ def main() -> None:
                    - int(keys[pygame.K_a] or keys[pygame.K_LEFT])
             move_y = int(keys[pygame.K_s] or keys[pygame.K_DOWN]) \
                    - int(keys[pygame.K_w] or keys[pygame.K_UP])
-            if move_x != 0 or move_y != 0:
-                player_facing = (move_x, move_y)  # atceramies pēdējo virzienu
             player_moving = (move_x != 0 or move_y != 0)
+            # Virzienu bildēm atjauninām tikai taisnai kustībai.
+            # Diagonāle (piem., W+D reizē) virzienā nav — tad atstājam
+            # iepriekšējo (citādi FACING_ANGLES mestu KeyError un spēle aizvērtos!)
+            if player_moving and (move_x == 0 or move_y == 0):
+                player_facing = (move_x, move_y)  # atceramies pēdējo taisno virzienu
             # Space un E apstrādājam šeit, lai viens nospiešanas = viena darbība
             state.update(dt, move_x, move_y, False, False)
             if state.status == STATUS_GAME_OVER:
@@ -326,7 +329,8 @@ def draw_world(window: pygame.Surface, state: GameState,
         frame = 0   # stāvot rādam pirmo kadru un nešūpojamies
         sway = 0.0
     draw_sprite(window, player_frames[frame], state.player_x, state.player_y,
-                gs.PLAYER_SIZE, COLOR_PLAYER, FACING_ANGLES[player_facing] + sway)
+                gs.PLAYER_SIZE, COLOR_PLAYER,
+                FACING_ANGLES.get(player_facing, 0) + sway)
 
 
 def draw_hud(window: pygame.Surface, state: GameState, font: pygame.font.Font) -> None:
