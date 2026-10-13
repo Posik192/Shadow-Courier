@@ -18,7 +18,7 @@ for level_num in (1, 2, 3):
     surface = pygame.display.set_mode((w, h))
     sprites = load_sprites()
     surface.fill((34, 40, 52))
-    draw_world(surface, state, sprites, (0, 1))
+    draw_world(surface, state, sprites, (0, 1), player_moving=False)
     draw_hud(surface, state, font)
     pygame.image.save(surface, f"level_{level_num}.png")
     print(f"level_{level_num}.png saglabāts")

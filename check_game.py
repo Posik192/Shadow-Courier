@@ -18,7 +18,7 @@ def flood(rows, start, door_is_wall):
             if n in seen:
                 continue
             ch = rows[n[1]][n[0]]
-            if ch == "#" or (door_is_wall and ch == "D"):
+            if ch == "#" or ch == "x" or (door_is_wall and ch == "D"):
                 continue
             seen.add(n)
             stack.append(n)

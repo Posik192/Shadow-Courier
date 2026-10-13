@@ -8,6 +8,7 @@ Vadība:     WASD/bultiņas — kustēties, Space — izslēgt lampu,
             E — paņemt atslēgu/atvērt durvis, P — pauze, Esc — izvēlne.
 """
 
+import math
 import os
 import sys
 
@@ -51,14 +52,30 @@ SPRITE_SIZES = {
     "lamp_on": gs.TILE_SIZE, "lamp_off": gs.TILE_SIZE,
     "player": gs.PLAYER_SIZE, "guard": GUARD_SIZE,
     "coin": 26, "key": 30,
+    # Dekoratīvie šķēršļi (kastes un mucas kartēs apzīmētas ar 'x')
+    "prop_crate_big": gs.TILE_SIZE, "prop_crate_mid": gs.TILE_SIZE,
+    "prop_crate_small": gs.TILE_SIZE, "prop_barrel": gs.TILE_SIZE,
 }
 
+# Kastes/mucas, no kurām izvēlas dekoratīvos šķēršļus kartēs ('x')
+PROP_SPRITES = ["prop_crate_big", "prop_crate_mid",
+                "prop_crate_small", "prop_barrel"]
 
-def load_sprites() -> dict[str, pygame.Surface | None]:
+# --- KUSTĪBAS ANIMĀCIJAS ---
+FRAME_SWITCH_MS = 120  # ik pēc tik milisekundēm mainās soļa kadrs
+SWAY_DEGREES = 4       # par cik grādiem spēlētājs "šūpojas", ejot
+
+
+def load_sprites() -> dict:
     """Ielādē tekstūras no assets/ mapes un samazina līdz spēles izmēram.
 
     Ja kādas bildes nav (piem., aizmirsa palaist cut_assets.py),
     spēle nestrādā ar kļūdu — tā vietā zīmē parastos kvadrātus.
+
+    Papildus ielādē kustības kadru sarakstus:
+    sprites["player_frames"] un sprites["guard_frames"] satur
+    player_1..4.png / guard_1..4.png. Ja kadru bilžu nav,
+    sarakstā ir viena bilde (parastais sprites) — animācija vienkārši nerit.
     """
     sprites = {}
     for name, size in SPRITE_SIZES.items():
@@ -68,6 +85,31 @@ def load_sprites() -> dict[str, pygame.Surface | None]:
             sprites[name] = pygame.transform.smoothscale(img, (size, size))
         else:
             sprites[name] = None
+
+    # Soļu kadri spēlētājam un sargiem (viena bilde = bez animācijas)
+    for name in ("player", "guard"):
+        frames = []
+        size = SPRITE_SIZES[name]
+        for i in range(1, 5):
+            path = os.path.join("assets", f"{name}_{i}.png")
+            if os.path.exists(path):
+                img = pygame.image.load(path).convert_alpha()
+                frames.append(pygame.transform.smoothscale(img, (size, size)))
+        if not frames:
+            frames = [sprites[name]]  # rezerves variants: viens kadrs
+        sprites[name + "_frames"] = frames
+
+    # Lampu varianti (lamp_1..4.png) — dažādas lampas dažādās vietās
+    lamp_frames = []
+    for i in range(1, 5):
+        path = os.path.join("assets", f"lamp_{i}.png")
+        if os.path.exists(path):
+            img = pygame.image.load(path).convert_alpha()
+            lamp_frames.append(pygame.transform.smoothscale(
+                img, (gs.TILE_SIZE, gs.TILE_SIZE)))
+    if not lamp_frames:
+        lamp_frames = [sprites["lamp_on"]]
+    sprites["lamp_frames"] = lamp_frames
     return sprites
 
 
@@ -104,6 +146,7 @@ def main() -> None:
 
     current_screen = SCREEN_MENU
     player_facing = (0, 1)  # kurp spēlētājs skatās (sākumā — uz leju)
+    player_moving = False   # vai spēlētājs kustas (animācijai)
 
     while True:
         # dt = cik sekundes pagāja kopš iepriekšējā kadra (lai ātrums
@@ -127,19 +170,23 @@ def main() -> None:
                    - int(keys[pygame.K_w] or keys[pygame.K_UP])
             if move_x != 0 or move_y != 0:
                 player_facing = (move_x, move_y)  # atceramies pēdējo virzienu
+            player_moving = (move_x != 0 or move_y != 0)
             # Space un E apstrādājam šeit, lai viens nospiešanas = viena darbība
             state.update(dt, move_x, move_y, False, False)
             if state.status == STATUS_GAME_OVER:
                 current_screen = SCREEN_GAME_OVER
             elif state.status == STATUS_WON:
                 current_screen = SCREEN_WON
+        else:
+            # Pauzē/izvēlnē spēlētājs nekustas — animācija apstājas
+            player_moving = False
 
         # --- 3. solis: zīmēšana ---
         window.fill(COLOR_FLOOR)
         if current_screen == SCREEN_MENU:
             draw_menu(window, font, big_font)
         else:
-            draw_world(window, state, sprites, player_facing)
+            draw_world(window, state, sprites, player_facing, player_moving)
             draw_hud(window, state, font)
             if current_screen == SCREEN_PAUSED:
                 draw_center_text(window, big_font, font, "PAUZE",
@@ -197,11 +244,17 @@ FACING_ANGLES = {(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}
 
 
 def draw_world(window: pygame.Surface, state: GameState,
-               sprites: dict[str, pygame.Surface | None],
-               player_facing: tuple[int, int]) -> None:
-    """Uzzīmē visu līmeni: grīdu, sienas, lampas, monētas, spēlētāju, sargus."""
+               sprites: dict, player_facing: tuple[int, int],
+               player_moving: bool = False) -> None:
+    """Uzzīmē visu līmeni: grīdu, sienas, lampas, monētas, spēlētāju, sargus.
+
+    player_moving — vai spēlētājs šobrīd kustas (ja True, rit soļu
+    animācija un viegla šūpošanās; stāvot rāda 1. kadru).
+    """
     level = state.level
     t = gs.TILE_SIZE
+    # Pašreizējais laiks milisekundēs — no tā rēķina animācijas kadru
+    now = pygame.time.get_ticks()
 
     # Grīda (visi lauciņi, kas nav sienas) un sienas
     for row in range(level.height):
@@ -232,24 +285,48 @@ def draw_world(window: pygame.Surface, state: GameState,
         dx, dy = level.door_pos
         draw_sprite(window, sprites["door"], dx * t, dy * t, t, COLOR_DOOR)
 
-    # Lampas (deg = gaiša, izslēgta = tumša)
-    for (col, row), off_timer in level.lamps.items():
-        lamp = sprites["lamp_on"] if off_timer <= 0 else sprites["lamp_off"]
-        color = COLOR_LAMP_ON if off_timer <= 0 else COLOR_LAMP_OFF
+    # Lampas (deg = gaiša, izslēgta = tumša; katrā vietā cits lampu variants)
+    lamp_frames = sprites["lamp_frames"]
+    for lamp_index, ((col, row), off_timer) in enumerate(level.lamps.items()):
+        if off_timer <= 0:
+            lamp = lamp_frames[lamp_index % len(lamp_frames)]
+            color = COLOR_LAMP_ON
+        else:
+            lamp = sprites["lamp_off"]
+            color = COLOR_LAMP_OFF
         draw_sprite(window, lamp, col * t, row * t, t, color)
 
-    # Sargi (pagriežas kustības virzienā)
+    # Dekoratīvie šķēršļi (kastes/mucas) — kartē apzīmēti ar 'x'
+    # Kuras kastes kur — izvēlamies pēc lauciņa koordinātām, lai vienmēr vienādi
+    for col, row in level.props:
+        prop_name = PROP_SPRITES[(col * 7 + row * 13) % len(PROP_SPRITES)]
+        draw_sprite(window, sprites[prop_name], col * t, row * t, t, COLOR_WALL)
+
+    # Sargi (pagriežas kustības virzienā; soļu animācija rit pastāvīgi,
+    # jo sargs vienmēr patrulē)
+    guard_frames = sprites["guard_frames"]
     for guard in level.guards:
         if guard.horizontal:
             guard_dir = (guard.direction, 0)
         else:
             guard_dir = (0, guard.direction)
-        draw_sprite(window, sprites["guard"], guard.x, guard.y, GUARD_SIZE,
+        # Nobīde no sarga pozīcijas, lai visi sargi neietu sinhroni
+        offset = (int(guard.x) + int(guard.y)) // 10
+        frame = (now // FRAME_SWITCH_MS + offset) % len(guard_frames)
+        draw_sprite(window, guard_frames[frame], guard.x, guard.y, GUARD_SIZE,
                     COLOR_GUARD, FACING_ANGLES[guard_dir])
 
     # Spēlētājs (kurjers, pagriežas kustības virzienā)
-    draw_sprite(window, sprites["player"], state.player_x, state.player_y,
-                gs.PLAYER_SIZE, COLOR_PLAYER, FACING_ANGLES[player_facing])
+    player_frames = sprites["player_frames"]
+    if player_moving:
+        frame = (now // FRAME_SWITCH_MS) % len(player_frames)
+        # Soļu šūpošanās: sprite viegli griežas pa labi/kreisi (sinusa vilnis)
+        sway = SWAY_DEGREES * math.sin(now * 0.02)
+    else:
+        frame = 0   # stāvot rādam pirmo kadru un nešūpojamies
+        sway = 0.0
+    draw_sprite(window, player_frames[frame], state.player_x, state.player_y,
+                gs.PLAYER_SIZE, COLOR_PLAYER, FACING_ANGLES[player_facing] + sway)
 
 
 def draw_hud(window: pygame.Surface, state: GameState, font: pygame.font.Font) -> None:

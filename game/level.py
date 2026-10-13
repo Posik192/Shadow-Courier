@@ -9,6 +9,7 @@ Karte ir saraksts ar teksta rindām. Katrs simbols nozīmē vienu lauciņu:
     D - durvis (atver ar E, ja ir atslēga)
     E - izeja (līmeņa beigas)
     L - lampa (apgaismo laukumu ap sevi)
+    x - kaste vai muca (dekoratīvs šķērslis, caur nevar iet)
     G - sargs, kas kustas horizontāli
     V - sargs, kas kustas vertikāli
 """
@@ -22,13 +23,13 @@ LEVEL_MAPS = [
     # 1. līmenis — viegls: viens sargs sargā apakšējo koridoru
     [
         "################",
-        "#P..C.....#....#",
+        "#P..C.....#...x#",
         "#.###.###.#.##.#",
         "#...#...#...#..#",
         "##..#.#.###.#..#",
         "#...#L#.....#..#",
         "#...#.#####.#..#",
-        "#.###....L#.#..#",
+        "#.###....L#.#.x#",
         "#..C..###.#.#..#",
         "#.####..#...####",
         "#..G.K..C...DE.#",
@@ -44,22 +45,22 @@ LEVEL_MAPS = [
         "#C.#.#...#...#.#",
         "#..#.#.###.#.#.#",
         "##.#.#.....#.#.#",
-        "#..L.#####.#...#",
-        "#.###......#####",
+        "#..L.#####.#..x#",
+        "#x###......#####",
         "#..K..#...G.DE.#",
         "################",
     ],
     # 3. līmenis — grūts: divi sargi, izeju sargā durvis (vajag atslēgu)
     [
         "################",
-        "#P..#..C....#..#",
+        "#P.x#..C....#..#",
         "#.#.#.#####.#..#",
         "#.#...#...#L#..#",
         "#.#####.#.#.#.C#",
         "#C....#.#.#.#..#",
         "#.###.#.#.#.##.#",
         "#...#.#.G.#....#",
-        "###.#.#####.##.#",
+        "###.#.#####.##x#",
         "#...#..L...V.###",
         "#..K..##.###DE.#",
         "################",
@@ -78,6 +79,7 @@ class Level:
 
         # Lauciņu kopas: (kolonna, rinda)
         self.walls: set[tuple[int, int]] = set()
+        self.props: set[tuple[int, int]] = set()  # kastes/mucas ('x') — cieta šķēršļi
         self.coins: set[tuple[int, int]] = set()
         self.lamps: dict[tuple[int, int], float] = {}  # lauciņš -> cik ilgi vēl izslēgta
         self.guards: list[Guard] = []
@@ -94,6 +96,8 @@ class Level:
                 pos = (col_index, row_index)
                 if symbol == "#":
                     self.walls.add(pos)
+                elif symbol == "x":
+                    self.props.add(pos)
                 elif symbol == "C":
                     self.coins.add(pos)
                 elif symbol == "K":
@@ -116,10 +120,12 @@ class Level:
                     self.guards.append(Guard(col_index, row_index, False, guard_speed))
 
     def is_solid_tile(self, col: int, row: int) -> bool:
-        """Vai uz šī lauciņa nedrīkst uzkāpt (siena, aizvērtas durvis vai ārpus kartes)."""
+        """Vai uz šī lauciņa nedrīkst uzkāpt (siena, kaste, aizvērtas durvis vai ārpus kartes)."""
         if col < 0 or row < 0 or col >= self.width or row >= self.height:
             return True
         if (col, row) in self.walls:
+            return True
+        if (col, row) in self.props:
             return True
         if not self.door_open and (col, row) == self.door_pos:
             return True
