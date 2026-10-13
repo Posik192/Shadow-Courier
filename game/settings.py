@@ -10,6 +10,7 @@ PLAYER_SIZE = 32      # spēlētāja kvadrāta izmērs (mazāks par lauciņu, la
 
 # --- SPĒLĒTĀJS ---
 PLAYER_SPEED = 200    # pikseļi sekundē — cik ātrs ir kurjers
+START_LIVES = 3       # ar cik dzīvībām sāk (sargs/gaisma noņem vienu)
 
 # --- 1. UNIKĀLĀ MEHĀNIKA: gaismas briesmas ---
 LIGHT_RADIUS = 120        # cik lielu laukumu apgaismo viena lampa (pikseļi)

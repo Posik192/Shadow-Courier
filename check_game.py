@@ -85,14 +85,22 @@ assert g.level.lamps[lamp] > 0, "lampa neizslēdzās"
 assert g.lamp_cooldown > 0, "cooldown neieslēdzās"
 print("Lampas izslēgšana: OK")
 
-# 5. Gaisma noķer, ja stāv par ilgu
+# 5. Gaisma noņem dzīvību, bet spēle beidzas tikai pie 0 dzīvībām
 g = GameState()
+lamp = next(iter(g.level.lamps))
 g.player_x = lamp[0] * s.TILE_SIZE + 8
 g.player_y = lamp[1] * s.TILE_SIZE + 8
+lives_before = g.lives
 for _ in range(int(s.LIGHT_TIME_LIMIT * 60) + 5):
     g.update(1 / 60, 0, 0, False, False)
+assert g.lives == lives_before - 1 and g.status == STATUS_PLAYING, "gaisma nenoņēma dzīvību"
+g.light_timer = s.LIGHT_TIME_LIMIT  # beidzamās dzīvības scenārijs
+g.lives = 1
+g.player_x = lamp[0] * s.TILE_SIZE + 8
+g.player_y = lamp[1] * s.TILE_SIZE + 8
+g.update(1 / 60, 0, 0, False, False)
 assert g.status == STATUS_GAME_OVER and "gaism" in g.game_over_reason
-print(f"Gaismas briesmas: OK ({g.game_over_reason})")
+print(f"Gaismas briesmas: OK (-1 dzīvība, pie 0 — {g.game_over_reason})")
 
 # 6. Atslēga + durvis
 g = GameState()
@@ -117,12 +125,16 @@ g.update(0.01, 0, 0, False, False)
 assert g.level_number == 2 and g.score >= s.LEVEL_BONUS and g.status == STATUS_PLAYING
 print(f"Izeja: OK (līmenis 2, punkti: {g.score})")
 
-# 8. Sargs noķer
+# 8. Sargs noņem dzīvību; pie 0 dzīvībām — spēles beigas
 g = GameState()
 guard = g.level.guards[0]
 g.player_x, g.player_y = guard.x, guard.y
 g.update(0.01, 0, 0, False, False)
+assert g.lives == s.START_LIVES - 1 and g.status == STATUS_PLAYING, "sargs nenoņēma dzīvību"
+g.lives = 1
+g.player_x, g.player_y = guard.x, guard.y
+g.update(0.01, 0, 0, False, False)
 assert g.status == STATUS_GAME_OVER
-print(f"Sargs: OK ({g.game_over_reason})")
+print(f"Sargs: OK (-1 dzīvība, pie 0 — {g.game_over_reason})")
 
 print("\nVISI TESTI IZJAUTI ✅")

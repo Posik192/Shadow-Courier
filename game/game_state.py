@@ -23,6 +23,7 @@ class GameState:
     def __init__(self) -> None:
         """Sāk jaunu spēli no 1. līmeņa ar 0 punktiem."""
         self.score = 0
+        self.lives = s.START_LIVES
         self.level_number = 1
         self.status = STATUS_PLAYING
         self.game_over_reason = ""  # kāpēc spēle beidzās (sargs vai gaisma)
@@ -37,7 +38,23 @@ class GameState:
         self.light_timer = 0.0    # cik ilgi spēlētājs jau stāv gaismā
         self.lamp_cooldown = 0.0  # cik ilgi vēl nevar atslēgt lampu
         self.level_time = 0.0     # cik ilgi spēlē šo līmeni (laika bonusam)
+        self.coins_collected = 0  # paņemtās monētas šajā līmenī (HUD rādīšanai)
         self.message = ""         # paziņojums spēlētājam (piem. "Vajag atslēgu!")
+
+    def lose_life(self, reason: str) -> None:
+        """Noņem vienu dzīvību. Ja dzīvības beigušās — spēle beidzas.
+
+        Ja dzīvības vēl ir: spēlētājs atgriežas līmeņa sākumā,
+        gaismas taimeris atiestatās, bet punkti un monētas paliek.
+        """
+        self.lives -= 1
+        if self.lives <= 0:
+            self.status = STATUS_GAME_OVER
+            self.game_over_reason = reason
+        else:
+            self.player_x, self.player_y = self.level.player_start
+            self.light_timer = 0.0
+            self.message = f"{reason} Atlikušās dzīvības: {self.lives}"
 
     # --- Galvenā metode: klients to izsauc 60 reizes sekundē ---
 
@@ -101,6 +118,7 @@ class GameState:
         if tile in self.level.coins:
             self.level.coins.remove(tile)
             self.score += s.COIN_POINTS
+            self.coins_collected += 1
 
     def _update_guards(self, dt: float) -> None:
         """Kustina sargus un pārbauda, vai kāds noķēris spēlētāju."""
@@ -108,8 +126,8 @@ class GameState:
             guard.update(dt, self.level.rect_hits_solid)
             if self._rects_overlap(self.player_x, self.player_y, s.PLAYER_SIZE,
                                    guard.x, guard.y, GUARD_SIZE):
-                self.status = STATUS_GAME_OVER
-                self.game_over_reason = "Sargs tevi noķēra!"
+                self.lose_life("Sargs tevi noķēra!")
+                return  # viena dzīvība uz vienu kadru, ne vairāk
 
     @staticmethod
     def _rects_overlap(ax: float, ay: float, a_size: int,
@@ -119,12 +137,11 @@ class GameState:
                 and ay < by + b_size and ay + a_size > by)
 
     def _check_light(self, dt: float) -> None:
-        """1. mehānika: ja spēlētājs par ilgu stāv gaismā, spēle beidzas."""
+        """1. mehānika: ja spēlētājs par ilgu stāv gaismā, zaudē dzīvību."""
         if self._player_in_light():
             self.light_timer += dt
             if self.light_timer >= s.LIGHT_TIME_LIMIT:
-                self.status = STATUS_GAME_OVER
-                self.game_over_reason = "Pārāk ilgi stāvēji gaismā!"
+                self.lose_life("Pārāk ilgi stāvēji gaismā!")
         else:
             self.light_timer = 0.0  # ārā no gaismas taimeris atiestatās
 
