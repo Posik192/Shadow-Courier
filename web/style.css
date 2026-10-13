@@ -1,0 +1,353 @@
+/* ============================================================
+   SHADOW COURIER — style.css
+   Vienīgais stila fails abām lapām (leaderboard.html, rules.html)
+
+   DIZAINA SISTĒMA (viss skaidrots šeit):
+   - Krāsas glabājas "mainīgajos" (:root), lai krāsu maiņa
+     notiktu VIENĀ vietā, nevis 50 vietās.
+   - Animācijas ir CSS @keyframes — tās ir viegli izskaidrot:
+     "no kādām vērtībām uz kādām vērtībām, cik ilgi".
+   - Attālumi iet pa 8px soli (8, 16, 24, 32, 48) — tā lapa
+     izskatās kārtīga, jo viss "sader" kopā.
+   ============================================================ */
+
+/* --- Krāsu un fontu mainīgie (šeit maina visu lapas izskatu) --- */
+:root {
+    --fons: #0d1420;            /* tumši zils nakts fons */
+    --fons-2: #16202e;          /* nedaudz gaišāks fons sekcijām */
+    --virsma: #1d2a3d;          /* kāršu un tabulu fons */
+    --teksts: #e8edf5;          /* gandrīz balts teksts */
+    --teksts-vajs: #8fa0b8;     /* pelēcīgs teksts mazāk svarīgam */
+    --akcents: #f2b64a;         /* lampas dzeltens — spēles galvenā krāsa */
+    --zaljsh: #3ddc97;          /* izejas zaļš */
+    --sarkans: #e65050;         /* sargu sarkanais */
+    --zils: #50a0ff;            /* spēlētāja zilais */
+    --zelts: #ffd700;           /* 1. vietas zelts */
+    --radius: 12px;             /* visu stūrīšu noapaļojums */
+    --fonts: "Space Grotesk", Arial, sans-serif;
+    --fonts-mono: "JetBrains Mono", monospace;
+}
+
+/* --- Pamati --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box; /* padding nepalielina elementa izmēru */
+}
+
+body {
+    background: var(--fons);
+    color: var(--teksts);
+    font-family: var(--fonts);
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Paša krāsota teksta iezīmēšana un ritjosla — sīkumi, kas
+   atšķir pārdomātu lapu no parastas */
+::selection {
+    background: var(--akcents);
+    color: var(--fons);
+}
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--fons); }
+::-webkit-scrollbar-thumb {
+    background: var(--virsma);
+    border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--akcents); }
+
+/* --- Animētais fons: divi lēni peldoši "gaismas plankumi" ---
+   Tie ir lieli, izplūduši krāsu lāsi, kas lēnām dreifē —
+   kā lukturu gaisma miglā. Pozīcijas maina @keyframes. */
+.gaisma-fons {
+    position: fixed;       /* paliek uz vietas, ritinot lapu */
+    inset: 0;              /* aizpilda visu ekrānu */
+    z-index: -1;           /* aiz visa satura */
+    pointer-events: none;  /* netraucē klikšķiem */
+}
+.gaisma-fons::before,
+.gaisma-fons::after {
+    content: "";
+    position: absolute;
+    width: 60vmax;         /* izmērs atkarīgs no ekrāna */
+    height: 60vmax;
+    border-radius: 50%;
+    filter: blur(80px);    /* mīkstas malas */
+    opacity: 0.14;
+}
+.gaisma-fons::before {
+    background: var(--akcents);
+    top: -20vmax;
+    left: -15vmax;
+    animation: dreifs-a 26s ease-in-out infinite alternate;
+}
+.gaisma-fons::after {
+    background: var(--zils);
+    bottom: -25vmax;
+    right: -15vmax;
+    animation: dreifs-b 32s ease-in-out infinite alternate;
+}
+@keyframes dreifs-a {
+    to { transform: translate(18vmax, 12vmax) scale(1.15); }
+}
+@keyframes dreifs-b {
+    to { transform: translate(-14vmax, -10vmax) scale(1.1); }
+}
+
+/* --- Izvēlne (vienāda abu lapu augšā) --- */
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 48px;
+    animation: nofirt-no-augsas 0.6s ease-out;
+}
+.logo {
+    font-family: var(--fonts-mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--akcents);
+    text-decoration: none;
+    letter-spacing: 1px;
+}
+.logo span { color: var(--teksts); }
+nav .saites { display: flex; gap: 32px; }
+nav .saites a {
+    color: var(--teksts-vajs);
+    text-decoration: none;
+    font-size: 15px;
+    padding-bottom: 4px;
+    position: relative;
+    transition: color 0.2s ease-out;
+}
+/* Zemsvītra, kas "iebrauc" no kreisās puses uzklājot peli */
+nav .saites a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--akcents);
+    transform: scaleX(0);            /* slēpta (saspiesta uz 0) */
+    transform-origin: left;
+    transition: transform 0.25s ease-out;
+}
+nav .saites a:hover,
+nav .saites a.aktiva { color: var(--teksts); }
+nav .saites a:hover::after,
+nav .saites a.aktiva::after { transform: scaleX(1); }
+
+/* Animācijas, ko lieto vairākas lietas */
+@keyframes nofirt-no-augsas {
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes paradies {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Galvenais saturs --- */
+main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+}
+
+/* --- Hero (lielā virsraksta daļa) --- */
+.hero {
+    text-align: center;
+    padding: 56px 0 48px;
+}
+.hero h1 {
+    font-size: clamp(40px, 7vw, 72px); /* fonta izmērs pielāgojas ekrānam */
+    font-weight: 700;
+    letter-spacing: 2px;
+    animation: paradies 0.7s ease-out both;
+}
+.hero h1 .akcents { color: var(--akcents); }
+/* Zibspuldze, kas "pārlēk" pāri virsrakstam vienu reizi ielādes brīdī */
+.hero h1 {
+    background: linear-gradient(110deg, var(--teksts) 40%, var(--akcents) 50%, var(--teksts) 60%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: paradies 0.7s ease-out both, zibspuldze 1.6s ease-out 0.4s both;
+}
+@keyframes zibspuldze {
+    from { background-position: 120% 0; }
+    to   { background-position: -30% 0; }
+}
+.hero p {
+    color: var(--teksts-vajs);
+    font-size: 18px;
+    margin-top: 16px;
+    animation: paradies 0.7s ease-out 0.25s both; /* both = sāk no "from" arī pirms delay */
+}
+
+/* --- Līderu tabula --- */
+.tabula-kaste {
+    background: var(--virsma);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: var(--radius);
+    padding: 8px 24px 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    animation: paradies 0.7s ease-out 0.4s both;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th {
+    font-family: var(--fonts-mono);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--teksts-vajs);
+    text-align: left;
+    padding: 18px 12px 12px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+}
+td {
+    padding: 16px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 17px;
+}
+/* Rindas ielido pa vienai (animation-delay palielinās katram nth-child) */
+tbody tr {
+    opacity: 0;
+    animation: rinda-ielido 0.5s ease-out forwards;
+}
+@keyframes rinda-ielido {
+    from { opacity: 0; transform: translateX(-16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+tbody tr:nth-child(1) { animation-delay: 0.55s; }
+tbody tr:nth-child(2) { animation-delay: 0.65s; }
+tbody tr:nth-child(3) { animation-delay: 0.75s; }
+tbody tr:nth-child(4) { animation-delay: 0.85s; }
+tbody tr:nth-child(5) { animation-delay: 0.95s; }
+/* Uzklājot peli, rinda maigi "pieceljas" */
+tbody tr {
+    transition: background 0.2s ease-out, transform 0.2s ease-out;
+}
+tbody tr:hover {
+    background: rgba(242, 182, 74, 0.07);
+    transform: scale(1.01);
+}
+/* 1. vieta: zelts un mīksti pulsējošs mirdzums */
+tr.first td {
+    color: var(--zelts);
+    font-weight: 700;
+    font-size: 19px;
+}
+tr.first .vieta {
+    display: inline-block;
+    animation: zelta-pulss 2.2s ease-in-out infinite;
+}
+@keyframes zelta-pulss {
+    0%, 100% { text-shadow: 0 0 6px rgba(255, 215, 0, 0.4); }
+    50%      { text-shadow: 0 0 18px rgba(255, 215, 0, 0.9); }
+}
+.vieta {
+    font-family: var(--fonts-mono);
+    font-weight: 700;
+    color: var(--teksts-vajs);
+}
+tr.first .vieta { color: var(--zelts); }
+.punkti {
+    font-family: var(--fonts-mono);
+    color: var(--akcents);
+}
+
+/* --- Poga --- */
+.poga {
+    display: inline-block;
+    margin-top: 32px;
+    padding: 14px 36px;
+    background: var(--akcents);
+    color: var(--fons);
+    font-weight: 700;
+    font-size: 16px;
+    text-decoration: none;
+    border-radius: var(--radius);
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+    animation: paradies 0.7s ease-out 1.1s both;
+}
+.poga:hover {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 12px 32px rgba(242, 182, 74, 0.35);
+}
+.poga:active { transform: translateY(0) scale(1.0); }
+
+/* --- Noteikumu lapas kartes --- */
+.kartes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px;
+    margin-top: 32px;
+}
+.karte {
+    background: var(--virsma);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    transition: transform 0.25s ease-out, border-color 0.25s ease-out;
+    animation: paradies 0.7s ease-out both;
+}
+.karte:hover {
+    transform: translateY(-6px);
+    border-color: var(--akcents);
+}
+.karte h3 {
+    color: var(--akcents);
+    margin-bottom: 10px;
+    font-size: 19px;
+}
+.karte p { color: var(--teksts-vajs); font-size: 15px; }
+/* Kartes parādās pa vienai */
+.kartes .karte:nth-child(1) { animation-delay: 0.35s; }
+.kartes .karte:nth-child(2) { animation-delay: 0.5s; }
+.kartes .karte:nth-child(3) { animation-delay: 0.65s; }
+
+/* Vadības taustiņu saraksts */
+.taustini { margin-top: 40px; animation: paradies 0.7s ease-out 0.5s both; }
+.taustini h2 { margin-bottom: 16px; }
+.taustini td { padding: 12px; }
+kbd {
+    font-family: var(--fonts-mono);
+    background: var(--fons);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom-width: 3px; /* taustiņš izskatās "nospiežams" */
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 14px;
+    color: var(--akcents);
+}
+
+/* Sekciju virsraksti */
+h2 {
+    font-size: 28px;
+    margin-top: 48px;
+}
+h2 .svars { color: var(--akcents); }
+
+/* --- Cieņa tiem, kas nevēlas animācijas (vestibulārās problēmas) --- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* --- Maziem ekrāniem (telefons) --- */
+@media (max-width: 600px) {
+    nav { padding: 16px 20px; }
+    nav .saites { gap: 18px; }
+    .hero { padding: 32px 0; }
+    td, th { padding: 10px 8px; font-size: 15px; }
+}

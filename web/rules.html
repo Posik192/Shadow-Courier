@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Courier — Noteikumi</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="gaisma-fons"></div>
+
+    <nav>
+        <a class="logo" href="leaderboard.html">SHADOW<span>COURIER</span></a>
+        <div class="saites">
+            <a href="leaderboard.html">TOP 10</a>
+            <a href="rules.html" class="aktiva">Noteikumi</a>
+        </div>
+    </nav>
+
+    <main>
+        <header class="hero">
+            <h1>SPĒLES <span class="akcents">NOTEIKUMI</span></h1>
+            <p>Tu esi slepens kurjers. Aiznes paketi līdz izejai — neviens nedrīkst tevi pamanīt.</p>
+        </header>
+
+        <!-- Trīs kartes: mērķis un abas unikālās mehānikas -->
+        <div class="kartes">
+            <div class="karte">
+                <h3>🎯 Mērķis</h3>
+                <p>Aiznes slepeno paketi līdz zaļajai izejai. Ceļā lasi monētas,
+                   atrodi atslēgu un atver durvis. Ja sargs tevi noķer — spēle beigusies.</p>
+            </div>
+            <div class="karte">
+                <h3>💡 Gaismas briesmas</h3>
+                <p>Lampas apgaismo laukumu ap sevi. Ja gaismā uzkavējies
+                   ilgāk par 3 sekundēm — sargi tevi pamanījuši. Seko brīdinājuma joslai!</p>
+            </div>
+            <div class="karte">
+                <h3>⚡ Lampu slēdzis</h3>
+                <p>Ar Space vari uz 5 sekundēm izslēgt tuvāko lampu un paiet
+                   tai garām ēnā. Pēc tam slēdzis uzlādējas 8 sekundes.</p>
+            </div>
+        </div>
+
+        <!-- Vadības taustiņi -->
+        <section class="taustini">
+            <h2>Vadība</h2>
+            <table>
+                <tbody>
+                    <tr>
+                        <td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> vai bultiņas</td>
+                        <td>Kustēties</td>
+                    </tr>
+                    <tr>
+                        <td><kbd>Space</kbd></td>
+                        <td>Izslēgt tuvāko lampu</td>
+                    </tr>
+                    <tr>
+                        <td><kbd>E</kbd></td>
+                        <td>Paņemt atslēgu / atvērt durvis</td>
+                    </tr>
+                    <tr>
+                        <td><kbd>P</kbd></td>
+                        <td>Pauze</td>
+                    </tr>
+                    <tr>
+                        <td><kbd>Esc</kbd></td>
+                        <td>Atpakaļ uz izvēlni</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Punktu sistēma -->
+        <section class="taustini">
+            <h2>Punktu <span class="svars">sistēma</span></h2>
+            <table>
+                <tbody>
+                    <tr><td>🪙 Monēta</td><td class="punkti">+10</td></tr>
+                    <tr><td>🔑 Atslēga</td><td class="punkti">+25</td></tr>
+                    <tr><td>🚪 Līmeņa pabeigšana</td><td class="punkti">+100</td></tr>
+                    <tr><td>⚡ Laika bonuss</td><td class="punkti">+2 par katru ietaupītu sekundi</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div style="text-align: center;">
+            <a class="poga" href="leaderboard.html">Apskatīt līderu tabulu →</a>
+        </div>
+    </main>
+</body>
+</html>
