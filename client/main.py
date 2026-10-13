@@ -20,7 +20,8 @@ from game.guard import GUARD_SIZE
 
 # --- LOGA UZSTĀDĪJUMI ---
 FPS = 60           # kadri sekundē
-HUD_HEIGHT = 64    # augšējā josla punktiem un paziņojumiem (pikseļi)
+HUD_HEIGHT = 64    # apakšējā informācijas josla (pikseļi)
+TOP_BAR_HEIGHT = 30  # augšējā plānā josla ar nosaukumu (zīmējas PĀRKLĀJ pasaulei)
 
 # --- KRĀSAS (R, G, B) ---
 COLOR_FLOOR = (34, 40, 52)      # grīda — tumši zilpelēka
@@ -33,9 +34,15 @@ COLOR_DOOR = (140, 90, 50)      # durvis — brūnas
 COLOR_EXIT = (60, 210, 110)     # izeja — zaļa
 COLOR_LAMP_ON = (255, 240, 160) # lampa, kas deg
 COLOR_LAMP_OFF = (80, 80, 90)   # izslēgta lampa
-COLOR_LIGHT = (255, 245, 170)   # gaismas laukums (caurspīdīgs)
 COLOR_TEXT = (230, 230, 235)    # teksts
 COLOR_WARNING = (250, 80, 60)   # brīdinājums (gaismas taimeris)
+
+# --- APGAISMOJUMA UZSTĀDĪJUMI ---
+DARKNESS_ALPHA = 175        # cik tumša ir noliktava ārpus gaismas (0–255)
+GLOW_COLOR = (255, 200, 90) # lampu un lukturu siltā dzeltenā krāsa
+GUARD_LIGHT_RADIUS = 150    # cik tālu sniedzas sarga lukturis (pikseļi)
+GUARD_CONE_ANGLE = 32       # luktura konusa puse leņķī (grādi)
+VIGNETTE_ALPHA = 130        # cik tumšas ir ekrāna malas (0–255)
 
 # Ekrānu nosaukumi (kā "lapas" programmā)
 SCREEN_MENU = "menu"
@@ -60,6 +67,9 @@ SPRITE_SIZES = {
 # Kastes/mucas, no kurām izvēlas dekoratīvos šķēršļus kartēs ('x')
 PROP_SPRITES = ["prop_crate_big", "prop_crate_mid",
                 "prop_crate_small", "prop_barrel"]
+
+# HUD ikonu izmērs (sirdis, monēta, atslēga apakšējā joslā)
+HUD_ICON_SIZE = 24
 
 # --- KUSTĪBAS ANIMĀCIJAS ---
 FRAME_SWITCH_MS = 120  # ik pēc tik milisekundēm mainās soļa kadrs
@@ -110,6 +120,25 @@ def load_sprites() -> dict:
     if not lamp_frames:
         lamp_frames = [sprites["lamp_on"]]
     sprites["lamp_frames"] = lamp_frames
+
+    # HUD ikonas (sirds, monēta, atslēga) — katrā divas versijas:
+    # parastā un tumšā ("tukšā", piem., zaudēta dzīvība vai nav atslēgas)
+    for name, filename in (("ui_heart", "ui_heart.png"),
+                           ("ui_coin", "ui_coin.png"),
+                           ("ui_key", "key.png")):
+        path = os.path.join("assets", filename)
+        if os.path.exists(path):
+            img = pygame.image.load(path).convert_alpha()
+            icon = pygame.transform.smoothscale(
+                img, (HUD_ICON_SIZE, HUD_ICON_SIZE))
+            sprites[name] = icon
+            # Tumšā versija: krāsas reizina ar pelēku — ikona paliek, bet "nodziest"
+            dark = icon.copy()
+            dark.fill((70, 70, 80, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            sprites[name + "_dark"] = dark
+        else:
+            sprites[name] = None
+            sprites[name + "_dark"] = None
     return sprites
 
 
@@ -128,6 +157,209 @@ def draw_sprite(window: pygame.Surface, sprite: pygame.Surface | None,
     # Rotācija maina bildes izmēru, tāpēc centrējam ap vēlamo punktu
     rect = sprite.get_rect(center=(x + size / 2, y + size / 2))
     window.blit(sprite, rect)
+
+
+# ============================================================
+#  APGAISMOJUMS — kā tas strādā (3 teikumi):
+#  1. Reiz programmas darbības laikā uzzīmējam "gaismas sprites" —
+#     mīkstus gradientus (aplis lampai, konuss sarga lukturim).
+#  2. Katrā kadrā pār pasaules uzklājam puscaurspīdīgu melnu "tumsas"
+#     slāni un ar BLEND_RGBA_SUB no tā "izgriežam" gaišas peles tur,
+#     kur deg lampas un spīd lukturi.
+#  3. Beigās pievienojam siltu dzeltenu mirdzumu (BLEND_RGB_ADD) un
+#     vinjetti (tumšākas ekrāna malas) — noliktava izskatās tumša,
+#     bet apgaismotās vietas silktas un lasāmas.
+# ============================================================
+
+# Kešatmiņa gatavajiem gradientiem: gradientu rēķina VIENREIZ (tas ir
+# "dārgi" — daudz pikseļu), katrā kadrā tikai zīmē (blit) un griež (rotate).
+_light_cache: dict = {}
+
+
+def _build_radial_pixels(radius: int, alpha_func) -> pygame.Surface:
+    """Uzzīmē kvadrātveida Surface (2*radius), kura pikseļu alpha
+    nosaka funkcija alpha_func(distance, angle) -> 0..255.
+
+    distance — attālums no centra (0..radius), angle — leņķis radianos
+    (0 = pa labi). Centrā parasti alpha=255, uz malām 0 — mīksta pāreja.
+    """
+    size = radius * 2
+    pixels = bytearray(size * size * 4)
+    i = 0
+    for y in range(size):
+        for x in range(size):
+            dx = x - radius
+            dy = y - radius
+            distance = math.hypot(dx, dy)
+            angle = math.atan2(dy, dx)
+            pixels[i + 3] = max(0, min(255, int(alpha_func(distance, angle))))
+            i += 4
+    return pygame.image.frombuffer(bytes(pixels), (size, size), "RGBA")
+
+
+def get_light_circle(radius: int) -> pygame.Surface:
+    """Lampas gaismas pele: centrā caurspīdīga, uz malām melna ar alpha.
+
+    Šo sprite zīmē uz tumsas slāņa ar BLEND_RGBA_SUB — kur sprite alpha
+    ir liela, tur tumsa "izgriežas" (paliek gaiši), malās pāreja ir mīksta.
+    """
+    key = ("circle", radius)
+    if key not in _light_cache:
+        def fade(distance, angle):
+            if distance >= radius:
+                return 0
+            t = 1.0 - distance / radius
+            return 255 * t * t  # kvadrātiska pāreja = mīkstākas malas
+        _light_cache[key] = _build_radial_pixels(radius, fade)
+    return _light_cache[key]
+
+
+def get_glow_circle(radius: int) -> pygame.Surface:
+    """Silta dzeltena mirdzuma pele (krāsains gradients).
+
+    Zīmē uz pasaules ar BLEND_RGB_ADD — pikseļi paliek gaišāki un
+    dzeltenīgāki, it kā lampa sildītu grīdu ap sevi.
+    """
+    key = ("glow", radius)
+    if key not in _light_cache:
+        base = get_light_circle(radius)  # alpha gradients (melna krāsā)
+        glow = base.copy()
+        # Aizkrāso melno RGB ar siltu dzelteno, alpha paliek tā pati
+        glow.fill(GLOW_COLOR, special_flags=pygame.BLEND_RGB_MULT)
+        _light_cache[key] = glow
+    return _light_cache[key]
+
+
+def get_light_cone(radius: int) -> pygame.Surface:
+    """Sarga luktura konuss: trīsstūrveida gradients, kas rāda pa labi.
+
+    Virsotne (gaišākā vieta) ir sprite centrā, konuss atveras pa labi.
+    Vēlāk to pagriež ar pygame.transform.rotate pēc sarga virziena.
+    """
+    key = ("cone", radius)
+    if key not in _light_cache:
+        half = math.radians(GUARD_CONE_ANGLE)
+
+        def fade(distance, angle):
+            if distance >= radius or abs(angle) > half:
+                return 0
+            along = 1.0 - distance / radius      # mazāk gaismas tālāk
+            side = 1.0 - abs(angle) / half       # mazāk gaismas pie malām
+            return 255 * along * along * (0.35 + 0.65 * side)
+        _light_cache[key] = _build_radial_pixels(radius, fade)
+    return _light_cache[key]
+
+
+def get_rotated_cone(direction: tuple[int, int], colored: bool) -> pygame.Surface:
+    """Atgriež luktura konusu, pagrieztu konkrētā virzienā (kešots).
+
+    direction — (dx, dy), piem., (1, 0) = pa labi, (0, 1) = uz leju.
+    colored=False — melna/alpha versija tumsas izgriešanai (SUB),
+    colored=True  — silti dzeltena versija mirdzumam (ADD).
+    """
+    dx, dy = direction
+    key = ("cone_rot", dx, dy, colored)
+    if key not in _light_cache:
+        cone = get_light_cone(GUARD_LIGHT_RADIUS)
+        if colored:
+            # Mirdzums ir vājāks nekā izgriezums — samazinām alpha uz pusi
+            cone = cone.copy()
+            cone.fill((255, 255, 255, 110), special_flags=pygame.BLEND_RGBA_MULT)
+            cone.fill(GLOW_COLOR, special_flags=pygame.BLEND_RGB_MULT)
+        # Konuss zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
+        # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
+        angle = -math.degrees(math.atan2(dy, dx))
+        _light_cache[key] = pygame.transform.rotate(cone, angle)
+    return _light_cache[key]
+
+
+def get_vignette(width: int, height: int) -> pygame.Surface:
+    """Vinjette — tumšs gradients pa ekrāna malām (centrā caurspīdīgs)."""
+    key = ("vignette", width, height)
+    if key not in _light_cache:
+        pixels = bytearray(width * height * 4)
+        cx, cy = width / 2, height / 2
+        # Attālums līdz stūrim — tur vinjette ir vis tumšākā
+        max_dist = math.hypot(cx, cy)
+        i = 0
+        for y in range(height):
+            for x in range(width):
+                d = math.hypot(x - cx, y - cy) / max_dist  # 0 centrā, 1 stūrī
+                if d > 0.55:
+                    pixels[i + 3] = int(VIGNETTE_ALPHA * (d - 0.55) / 0.45)
+                i += 4
+        _light_cache[key] = pygame.image.frombuffer(
+            bytes(pixels), (width, height), "RGBA")
+    return _light_cache[key]
+
+
+def draw_lighting(window: pygame.Surface, state: GameState) -> None:
+    """Uzzīmē tumsu, lampu peles, sargu lukturus un vinjetti.
+
+    Izsauc PĒC tam, kad visa pasaule (grīda, sprites) jau uzzīmēta.
+    """
+    t = gs.TILE_SIZE
+    world_w = state.level.width * t
+    world_h = state.level.height * t
+
+    # 1. solis: tumsas slānis pār visu pasauli
+    darkness = pygame.Surface((world_w, world_h), pygame.SRCALPHA)
+    darkness.fill((0, 0, 0, DARKNESS_ALPHA))
+
+    # 2. solis: katrai DEGLOŠAI lampai "izgriež" gaišu peli tumsā.
+    # BLEND_RGBA_SUB atņem sprite alpha no tumsas alpha — tur paliek caurspīdīgi.
+    circle = get_light_circle(gs.LIGHT_RADIUS)
+    for (col, row), off_timer in state.level.lamps.items():
+        if off_timer <= 0:
+            center = (col * t + t // 2, row * t + t // 2)
+            darkness.blit(circle, circle.get_rect(center=center),
+                          special_flags=pygame.BLEND_RGBA_SUB)
+
+    # 3. solis: sargu lukturu konusi (pagriezti kustības virzienā)
+    for guard in state.level.guards:
+        if guard.horizontal:
+            guard_dir = (guard.direction, 0)
+        else:
+            guard_dir = (0, guard.direction)
+        cone = get_rotated_cone(guard_dir, colored=False)
+        center = (guard.x + GUARD_SIZE / 2, guard.y + GUARD_SIZE / 2)
+        darkness.blit(cone, cone.get_rect(center=center),
+                      special_flags=pygame.BLEND_RGBA_SUB)
+
+    # 4. solis: uzklāj tumsu ar izgrieztajām gaismas vietām
+    window.blit(darkness, (0, 0))
+
+    # 5. solis: silts dzeltens mirdzums gaismas vietās (aditīvi — gaišāk)
+    glow = get_glow_circle(gs.LIGHT_RADIUS)
+    for (col, row), off_timer in state.level.lamps.items():
+        if off_timer <= 0:
+            center = (col * t + t // 2, row * t + t // 2)
+            window.blit(glow, glow.get_rect(center=center),
+                        special_flags=pygame.BLEND_RGB_ADD)
+    for guard in state.level.guards:
+        if guard.horizontal:
+            guard_dir = (guard.direction, 0)
+        else:
+            guard_dir = (0, guard.direction)
+        cone_glow = get_rotated_cone(guard_dir, colored=True)
+        center = (guard.x + GUARD_SIZE / 2, guard.y + GUARD_SIZE / 2)
+        window.blit(cone_glow, cone_glow.get_rect(center=center),
+                    special_flags=pygame.BLEND_RGB_ADD)
+
+    # 6. solis: vinjette — ekrāna malas nedaudz tumšākas
+    window.blit(get_vignette(world_w, world_h), (0, 0))
+
+
+def draw_top_bar(window: pygame.Surface, state: GameState,
+                 font: pygame.font.Font) -> None:
+    """Plānā augšējā josla: nosaukums, līmenis, punkti (pārklāj pasaulei)."""
+    bar = pygame.Surface((window.get_width(), TOP_BAR_HEIGHT), pygame.SRCALPHA)
+    bar.fill((10, 12, 18, 200))  # gandrīz melna, nedaudz caurspīdīga
+    window.blit(bar, (0, 0))
+    text = f"SHADOW COURIER   |   LĪMENIS {state.level_number}   |   PUNKTI {state.score}"
+    img = font.render(text, True, COLOR_TEXT)
+    window.blit(img, img.get_rect(center=(window.get_width() // 2,
+                                          TOP_BAR_HEIGHT // 2)))
 
 
 def main() -> None:
@@ -190,7 +422,7 @@ def main() -> None:
             draw_menu(window, font, big_font)
         else:
             draw_world(window, state, sprites, player_facing, player_moving)
-            draw_hud(window, state, font)
+            draw_hud(window, state, font, sprites)
             if current_screen == SCREEN_PAUSED:
                 draw_center_text(window, big_font, font, "PAUZE",
                                  "P — turpināt | Esc — izvēlne")
@@ -267,14 +499,6 @@ def draw_world(window: pygame.Surface, state: GameState,
             else:
                 draw_sprite(window, sprites["floor"], col * t, row * t, t, COLOR_FLOOR)
 
-    # Gaismas laukumi ap dedzinošām lampām (caurspīdīgi dzelteni apļi)
-    light_layer = pygame.Surface((window.get_width(), window.get_height()), pygame.SRCALPHA)
-    for (col, row), off_timer in level.lamps.items():
-        if off_timer <= 0:
-            center = (col * t + t // 2, row * t + t // 2)
-            pygame.draw.circle(light_layer, (*COLOR_LIGHT, 60), center, gs.LIGHT_RADIUS)
-    window.blit(light_layer, (0, 0))
-
     # Izeja, monētas, atslēga, durvis
     ex, ey = level.exit_pos
     draw_sprite(window, sprites["exit"], ex * t, ey * t, t, COLOR_EXIT)
@@ -332,31 +556,106 @@ def draw_world(window: pygame.Surface, state: GameState,
                 gs.PLAYER_SIZE, COLOR_PLAYER,
                 FACING_ANGLES.get(player_facing, 0) + sway)
 
+    # Tumsa + gaismas PĒC visa cita — tā "nosedz" pasauli,
+    # izņemot vietas, kur deg lampas un spīd sargu lukturi
+    draw_lighting(window, state)
 
-def draw_hud(window: pygame.Surface, state: GameState, font: pygame.font.Font) -> None:
-    """Uzzīmē augšējo joslu: punkti, līmenis, brīdinājumi, paziņojumi."""
+
+def _draw_hud_icon(window: pygame.Surface, sprite: pygame.Surface | None,
+                   x: int, y: int, fallback_color: tuple) -> None:
+    """Uzzīmē vienu HUD ikonu; ja bildes nav — zīmē mazu kvadrātu."""
+    if sprite is None:
+        pygame.draw.rect(window, fallback_color,
+                         (x, y, HUD_ICON_SIZE, HUD_ICON_SIZE))
+    else:
+        window.blit(sprite, (x, y))
+
+
+def draw_hud(window: pygame.Surface, state: GameState,
+             font: pygame.font.Font, sprites: dict) -> None:
+    """Uzzīmē HUD: augšējo plāno joslu un apakšējo informācijas joslu.
+
+    Apakšējā joslā (melna, HUD_HEIGHT px): sirdis (dzīvības), monētas
+    "X / Y", atslēgas ikona, lampas slēdža uzlādes josla, punkti/līmenis,
+    paziņojumi un gaismas brīdinājums.
+    """
+    width = window.get_width()
     hud_top = state.level.height * gs.TILE_SIZE
-    pygame.draw.rect(window, (20, 24, 32), (0, hud_top, window.get_width(), HUD_HEIGHT))
+    row1_y = hud_top + 6    # 1. rinda: ikonas
+    row2_y = hud_top + 38   # 2. rinda: teksti un joslas
 
-    info = f"Punkti: {state.score}   Līmenis: {state.level_number}"
-    if state.has_key:
-        info += "   [Atslēga]"
-    window.blit(font.render(info, True, COLOR_TEXT), (12, hud_top + 6))
+    # Joslas fons — gandrīz melns, ar plānu gaišu līniju virsotnē
+    pygame.draw.rect(window, (12, 14, 20), (0, hud_top, width, HUD_HEIGHT))
+    pygame.draw.line(window, (60, 65, 80), (0, hud_top), (width, hud_top))
 
-    # Gaismas brīdinājums: sarkana josla, kas piepildās, kamēr stāv gaismā
-    if state.light_timer > 0:
-        part = state.light_timer / gs.LIGHT_TIME_LIMIT
-        pygame.draw.rect(window, COLOR_WARNING,
-                         (12, hud_top + 38, int(200 * part), 12))
-        window.blit(font.render("GAISMA!", True, COLOR_WARNING), (220, hud_top + 30))
+    x = 12
 
-    # Lampas slēdža uzlāde
+    # --- Sirdis (dzīvības): pilnas sarkanas, zaudētās — tumšas ---
+    for i in range(gs.START_LIVES):
+        if i < state.lives:
+            heart = sprites.get("ui_heart")
+        else:
+            heart = sprites.get("ui_heart_dark")
+        _draw_hud_icon(window, heart, x, row1_y, COLOR_WARNING)
+        x += HUD_ICON_SIZE + 6
+    x += 10
+
+    # --- Monētas: "X / Y" (paņemtās / visas šajā līmenī) ---
+    _draw_hud_icon(window, sprites.get("ui_coin"), x, row1_y, COLOR_COIN)
+    x += HUD_ICON_SIZE + 4
+    total_coins = state.coins_collected + len(state.level.coins)
+    coin_img = font.render(f"{state.coins_collected} / {total_coins}",
+                           True, COLOR_COIN)
+    window.blit(coin_img, (x, row1_y + 2))
+    x += coin_img.get_width() + 16
+
+    # --- Atslēga: gaiša, ja paņemta; tumša, ja nav ---
+    key_icon = sprites.get("ui_key") if state.has_key \
+        else sprites.get("ui_key_dark")
+    _draw_hud_icon(window, key_icon, x, row1_y, COLOR_KEY)
+    x += HUD_ICON_SIZE + 4
+    window.blit(font.render("ir" if state.has_key else "nav", True,
+                            COLOR_KEY if state.has_key else (110, 110, 120)),
+                (x, row1_y + 2))
+
+    # --- 2. rinda: lampas slēdža uzlādes josla ---
+    x2 = 12
+    window.blit(font.render("Slēdzis:", True, COLOR_TEXT), (x2, row2_y - 4))
+    x2 += font.size("Slēdzis:")[0] + 8
+    bar_w, bar_h = 120, 12
+    pygame.draw.rect(window, (50, 50, 60), (x2, row2_y, bar_w, bar_h))
     if state.lamp_cooldown > 0:
-        text = f"Lampas slēdzis: {state.lamp_cooldown:.0f}s"
-        window.blit(font.render(text, True, COLOR_TEXT), (420, hud_top + 30))
+        # Josla piepildās, kamēr slēdzis uzlādējas
+        part = 1.0 - state.lamp_cooldown / gs.LAMP_COOLDOWN
+    else:
+        part = 1.0  # pilna = gatavs lietošanai
+    pygame.draw.rect(window, COLOR_COIN,
+                     (x2, row2_y, int(bar_w * part), bar_h))
+    if part >= 1.0:
+        window.blit(font.render("gatavs", True, COLOR_COIN),
+                    (x2 + bar_w + 8, row2_y - 4))
 
+    # --- 2. rinda: gaismas brīdinājums (sarkana josla + teksts) ---
+    warn_x = x2 + bar_w + 80
+    if state.light_timer > 0:
+        part = min(1.0, state.light_timer / gs.LIGHT_TIME_LIMIT)
+        pygame.draw.rect(window, COLOR_WARNING,
+                         (warn_x, row2_y, int(120 * part), bar_h))
+        window.blit(font.render("GAISMA!", True, COLOR_WARNING),
+                    (warn_x + 128, row2_y - 4))
+
+    # --- 2. rinda: punkti un līmenis labajā pusē ---
+    info = f"Līmenis: {state.level_number}   Punkti: {state.score}"
+    info_img = font.render(info, True, COLOR_TEXT)
+    window.blit(info_img, (width - info_img.get_width() - 12, row2_y - 4))
+
+    # --- Paziņojums (piem., "Vajag atslēgu!") — joslas labajā augšā ---
     if state.message:
-        window.blit(font.render(state.message, True, COLOR_COIN), (420, hud_top + 6))
+        msg_img = font.render(state.message, True, COLOR_COIN)
+        window.blit(msg_img, (width - msg_img.get_width() - 12, row1_y))
+
+    # Augšējā plānā josla ar nosaukumu (zīmējas pār pasaules augšu)
+    draw_top_bar(window, state, font)
 
 
 def draw_menu(window: pygame.Surface, font: pygame.font.Font,

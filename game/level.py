@@ -17,53 +17,74 @@ Karte ir saraksts ar teksta rindām. Katrs simbols nozīmē vienu lauciņu:
 from game.guard import Guard
 from game.settings import TILE_SIZE, GUARD_SPEEDS
 
-# --- TRĪS LĪMEŅU KARTES (grūtība aug: vairāk sargu, lampu un sienu) ---
+# --- TRĪS LĪMEŅU KARTES (24x16, grūtība aug: vairāk sargu, lampu un sienu) ---
 
 LEVEL_MAPS = [
-    # 1. līmenis — viegls: viens sargs sargā apakšējo koridoru
+    # 1. līmenis — viegls: liela noliktavas zāle ar kastu grupām, 2 sargi
+    # (viens patrulē galveno zāli, otrs austrumu spārnā pie durvīm),
+    # 4 lampas pie eju krustojumiem, 5 monētas. Atslēga dienvidrietumu
+    # stūrī — tālu no izejas telpas durvīm dienvidaustrumos.
     [
-        "################",
-        "#P..C.....#...x#",
-        "#.###.###.#.##.#",
-        "#...#...#...#..#",
-        "##..#.#.###.#..#",
-        "#...#L#.....#..#",
-        "#...#.#####.#..#",
-        "#.###....L#.#.x#",
-        "#..C..###.#.#..#",
-        "#.####..#...####",
-        "#..G.K..C...DE.#",
-        "################",
+        "########################",
+        "#P......#.....C#.xx....#",
+        "#.......#..xx..#.xx....#",
+        "#.......#..xx..#......C#",
+        "#.......#......#.......#",
+        "####.######.####.......#",
+        "#...L......L...........#",
+        "#..xx....xx......L.....#",
+        "#..xx....xx.......V.C..#",
+        "#..............#.xxx...#",
+        "#C.....G.......#.L.....#",
+        "###.########.########D##",
+        "#.......#.....xx...#...#",
+        "#..K....#.....xx...#.E.#",
+        "#.......#.......C..#...#",
+        "########################",
     ],
-    # 2. līmenis — vidējs: divas lampas, sargs sargā durvju pieeju
+    # 2. līmenis — vidējs: vairākas telpas, garas patruļu līnijas,
+    # 3 sargi (divi vertikālie sargā ZA un austrumu koridorus, viens
+    # horizontālais lielajā dienvidu zālē), 4 lampas, 5 monētas.
+    # Izejas telpa dienvidrietumos, atslēga ZA augšējā labajā stūrī.
     [
-        "################",
-        "#P....#.....C..#",
-        "#.##..#..####..#",
-        "#..#.....#L....#",
-        "#..#.###.#.###.#",
-        "#C.#.#...#...#.#",
-        "#..#.#.###.#.#.#",
-        "##.#.#.....#.#.#",
-        "#..L.#####.#..x#",
-        "#x###......#####",
-        "#..K..#...G.DE.#",
-        "################",
+        "########################",
+        "#P....#...C...#....K...#",
+        "#.....#.V.....#..xx....#",
+        "#..L......xx..#..xx....#",
+        "#.........xx..#.......C#",
+        "#.....#...L.....L......#",
+        "#C....#.......####..####",
+        "#.....#................#",
+        "#..xx....xx.....xx...V.#",
+        "#..xx....xx..C..xx.....#",
+        "#.....G........L.......#",
+        "##D##.############.#####",
+        "#...#.........xx.......#",
+        "#.E.#.........xx....C..#",
+        "#...#..................#",
+        "########################",
     ],
-    # 3. līmenis — grūts: divi sargi, izeju sargā durvis (vajag atslēgu)
+    # 3. līmenis — grūts: blīva noliktava ar daudzām kastu grupām,
+    # 4 sargi (atslēgas telpu sargā vertikālais sargs, garo zāli —
+    # horizontālais, vēl divi austrumu un dienvidu rajonos),
+    # 5 lampas pie krustojumiem, 5 monētas. Atslēga tālu no durvīm.
     [
-        "################",
-        "#P.x#..C....#..#",
-        "#.#.#.#####.#..#",
-        "#.#...#...#L#..#",
-        "#.#####.#.#.#.C#",
-        "#C....#.#.#.#..#",
-        "#.###.#.#.#.##.#",
-        "#...#.#.G.#....#",
-        "###.#.#####.##x#",
-        "#...#..L...V.###",
-        "#..K..##.###DE.#",
-        "################",
+        "########################",
+        "#P.....#......#.....K..#",
+        "#......#..xx..#.Vxx....#",
+        "#..L...#..xx..#..xx....#",
+        "#...........C.....L....#",
+        "####.#####.###.........#",
+        "#...L.xx..L...L........#",
+        "#.....xx.........xx...C#",
+        "#..........G...........#",
+        "#C......xx..........V..#",
+        "###.##############.#####",
+        "#......C..#........#...#",
+        "#...xx....#..xx....#...#",
+        "#.K.xx....#..xx....D.E.#",
+        "#....G....#......C.#...#",
+        "########################",
     ],
 ]
 
