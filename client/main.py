@@ -44,18 +44,28 @@ SCREEN_GAME_OVER = "game_over"
 SCREEN_WON = "won"
 
 
-def load_sprites() -> dict[str, pygame.Surface | None]:
-    """Ielādē tekstūras no assets/ mapes.
+# Cik lielus sprites zīmēt spēlē (pikseļi)
+SPRITE_SIZES = {
+    "floor": gs.TILE_SIZE, "wall": gs.TILE_SIZE,
+    "door": gs.TILE_SIZE, "exit": gs.TILE_SIZE,
+    "lamp_on": gs.TILE_SIZE, "lamp_off": gs.TILE_SIZE,
+    "player": gs.PLAYER_SIZE, "guard": GUARD_SIZE,
+    "coin": 26, "key": 30,
+}
 
-    Ja kādas bildes nav (piem., aizmirsa palaist make_assets.py),
+
+def load_sprites() -> dict[str, pygame.Surface | None]:
+    """Ielādē tekstūras no assets/ mapes un samazina līdz spēles izmēram.
+
+    Ja kādas bildes nav (piem., aizmirsa palaist cut_assets.py),
     spēle nestrādā ar kļūdu — tā vietā zīmē parastos kvadrātus.
     """
     sprites = {}
-    for name in ("floor", "wall", "player", "guard", "coin", "key",
-                 "door", "exit", "lamp_on", "lamp_off"):
+    for name, size in SPRITE_SIZES.items():
         path = os.path.join("assets", name + ".png")
         if os.path.exists(path):
-            sprites[name] = pygame.image.load(path).convert_alpha()
+            img = pygame.image.load(path).convert_alpha()
+            sprites[name] = pygame.transform.smoothscale(img, (size, size))
         else:
             sprites[name] = None
     return sprites
@@ -214,19 +224,19 @@ def draw_world(window: pygame.Surface, state: GameState,
     draw_sprite(window, sprites["exit"], ex * t, ey * t, t, COLOR_EXIT)
     for col, row in level.coins:
         draw_sprite(window, sprites["coin"],
-                    col * t + (t - 20) // 2, row * t + (t - 20) // 2, 20, COLOR_COIN)
+                    col * t + 11, row * t + 11, 26, COLOR_COIN)
     if level.key_pos is not None:
         kx, ky = level.key_pos
-        draw_sprite(window, sprites["key"], kx * t + 10, ky * t + 16, 28, COLOR_KEY)
+        draw_sprite(window, sprites["key"], kx * t + 9, ky * t + 9, 30, COLOR_KEY)
     if level.door_pos is not None and not level.door_open:
         dx, dy = level.door_pos
         draw_sprite(window, sprites["door"], dx * t, dy * t, t, COLOR_DOOR)
 
-    # Lampas (deg = dzeltena, izslēgta = pelēka)
+    # Lampas (deg = gaiša, izslēgta = tumša)
     for (col, row), off_timer in level.lamps.items():
         lamp = sprites["lamp_on"] if off_timer <= 0 else sprites["lamp_off"]
         color = COLOR_LAMP_ON if off_timer <= 0 else COLOR_LAMP_OFF
-        draw_sprite(window, lamp, col * t + 12, row * t + 12, 24, color)
+        draw_sprite(window, lamp, col * t, row * t, t, color)
 
     # Sargi (pagriežas kustības virzienā)
     for guard in level.guards:
