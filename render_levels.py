@@ -9,7 +9,11 @@ from client.main import HUD_HEIGHT, draw_world, draw_hud, load_sprites
 
 pygame.init()
 state = GameState()
-font = pygame.font.SysFont("arial", 24)
+fonts = {
+    "font": pygame.font.SysFont("consolas", 20),
+    "big": pygame.font.SysFont("consolas", 44, bold=True),
+    "small": pygame.font.SysFont("consolas", 16),
+}
 
 for level_num in (1, 2, 3):
     state.load_level(level_num)
@@ -17,9 +21,9 @@ for level_num in (1, 2, 3):
     h = state.level.height * gs.TILE_SIZE + HUD_HEIGHT
     surface = pygame.display.set_mode((w, h))
     sprites = load_sprites()
-    surface.fill((34, 40, 52))
+    surface.fill((20, 23, 28))
     draw_world(surface, state, sprites, (0, 1), player_moving=False)
-    draw_hud(surface, state, font, sprites)
+    draw_hud(surface, state, fonts, sprites)
     pygame.image.save(surface, f"level_{level_num}.png")
     print(f"level_{level_num}.png saglabāts")
 

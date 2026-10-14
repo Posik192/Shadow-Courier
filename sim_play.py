@@ -13,10 +13,13 @@ w = state.level.width * gs.TILE_SIZE
 h = state.level.height * gs.TILE_SIZE + HUD_HEIGHT
 surface = pygame.display.set_mode((w, h))
 sprites = load_sprites()
-font = pygame.font.SysFont("arial", 24)
+fonts = {
+    "font": pygame.font.SysFont("consolas", 20),
+    "big": pygame.font.SysFont("consolas", 44, bold=True),
+    "small": pygame.font.SysFont("consolas", 16),
+}
 
 clock = pygame.time.Clock()
-moving = True
 # 3600 kadri = 60 sekundes spēles
 for frame in range(3600):
     dt = clock.tick(60) / 1000.0
@@ -32,7 +35,7 @@ for frame in range(3600):
     elif state.status in ("game_over", "won"):
         state.__init__()
     draw_world(surface, state, sprites, (mx, my) if (mx, my) != (0, 0) else (0, 1), True)
-    draw_hud(surface, state, font, sprites)
+    draw_hud(surface, state, fonts, sprites)
     pygame.display.flip()
     if frame % 600 == 0:
         print(f"kadrs {frame}: punkti={state.score}, statuss={state.status}, līmenis={state.level_number}")

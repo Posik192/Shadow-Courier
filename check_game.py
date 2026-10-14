@@ -54,6 +54,22 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
     seen_closed = flood(rows, start, door_is_wall=True)
     assert exit_pos not in seen_closed, \
         f"Līmenis {i}: KĻŪDA — izeju var sasniegt apejot durvis (atslēga nav vajadzīga)!"
+    # Katrai lampai jābūt pie sienas (vismaz vienam no 4 kaimiņiem jābūt '#')
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch == "L":
+                neighbours = (rows[r - 1][c], rows[r + 1][c],
+                              rows[r][c - 1], rows[r][c + 1])
+                assert "#" in neighbours, \
+                    f"Līmenis {i}: lampa ({c},{r}) nav pie sienas!"
+    # Starta pozīcijas (hitboxi) nedrīkst atrasties sienās
+    lvl = Level(rows, i)
+    assert not lvl.rect_hits_solid(*lvl.player_start,
+                                   s.PLAYER_HIT_W, s.PLAYER_HIT_H), \
+        f"Līmenis {i}: spēlētāja starts atrodas sienā!"
+    for gd in lvl.guards:
+        assert not lvl.rect_hits_solid(gd.x, gd.y, s.GUARD_HIT_W, s.GUARD_HIT_H), \
+            f"Līmenis {i}: sargs ({gd.x:.0f},{gd.y:.0f}) sākas sienā!"
     print(f"Līmenis {i}: OK ({w}x{h}, sargu: {flat.count('G') + flat.count('V')}, izeja aiz durvīm ✓)")
 
 # 2. Kustība un siena
@@ -66,11 +82,15 @@ g.update(0.5, -1, 0, False, False)  # siena kreisajā pusē — nedrīkst iziet 
 assert g.player_x > 0, "spēlētājs izgāja caur sienu!"
 print("Kustība un sienas: OK")
 
+def place_on_tile(g: GameState, col: int, row: int) -> None:
+    """Uzliek spēlētāja hitboxu uz lauciņa (centrēts) — testu palīgs."""
+    g.player_x = col * s.TILE_SIZE + (s.TILE_SIZE - s.PLAYER_HIT_W) // 2
+    g.player_y = row * s.TILE_SIZE + (s.TILE_SIZE - s.PLAYER_HIT_H) // 2
+
 # 3. Monēta dod punktus
 g = GameState()
 coin = next(iter(g.level.coins))
-g.player_x = coin[0] * s.TILE_SIZE + 8
-g.player_y = coin[1] * s.TILE_SIZE + 8
+place_on_tile(g, *coin)
 g.update(0.01, 0, 0, False, False)
 assert g.score == s.COIN_POINTS, f"monēta nedeva punktus: {g.score}"
 print("Monēta: OK (+10)")
@@ -78,8 +98,7 @@ print("Monēta: OK (+10)")
 # 4. Lampa: izslēgšana un cooldown
 g = GameState()
 lamp = next(iter(g.level.lamps))
-g.player_x = lamp[0] * s.TILE_SIZE + 8
-g.player_y = lamp[1] * s.TILE_SIZE + 8
+place_on_tile(g, *lamp)
 g.update(0.01, 0, 0, True, False)
 assert g.level.lamps[lamp] > 0, "lampa neizslēdzās"
 assert g.lamp_cooldown > 0, "cooldown neieslēdzās"
@@ -88,30 +107,25 @@ print("Lampas izslēgšana: OK")
 # 5. Gaisma noņem dzīvību, bet spēle beidzas tikai pie 0 dzīvībām
 g = GameState()
 lamp = next(iter(g.level.lamps))
-g.player_x = lamp[0] * s.TILE_SIZE + 8
-g.player_y = lamp[1] * s.TILE_SIZE + 8
+place_on_tile(g, *lamp)
 lives_before = g.lives
 for _ in range(int(s.LIGHT_TIME_LIMIT * 60) + 5):
     g.update(1 / 60, 0, 0, False, False)
 assert g.lives == lives_before - 1 and g.status == STATUS_PLAYING, "gaisma nenoņēma dzīvību"
 g.light_timer = s.LIGHT_TIME_LIMIT  # beidzamās dzīvības scenārijs
 g.lives = 1
-g.player_x = lamp[0] * s.TILE_SIZE + 8
-g.player_y = lamp[1] * s.TILE_SIZE + 8
+place_on_tile(g, *lamp)
 g.update(1 / 60, 0, 0, False, False)
 assert g.status == STATUS_GAME_OVER and "gaism" in g.game_over_reason
 print(f"Gaismas briesmas: OK (-1 dzīvība, pie 0 — {g.game_over_reason})")
 
 # 6. Atslēga + durvis
 g = GameState()
-k = g.level.key_pos
-g.player_x = k[0] * s.TILE_SIZE + 8
-g.player_y = k[1] * s.TILE_SIZE + 8
+place_on_tile(g, *g.level.key_pos)
 g.update(0.01, 0, 0, False, True)
 assert g.has_key and g.level.key_pos is None and g.score == s.KEY_POINTS
 d = g.level.door_pos
-g.player_x = d[0] * s.TILE_SIZE + 8
-g.player_y = d[1] * s.TILE_SIZE + 8 - s.TILE_SIZE
+place_on_tile(g, d[0], d[1] - 1)  # stāvam vienu lauciņu virs durvīm
 g.update(0.01, 0, 0, False, True)
 assert g.level.door_open, "durvis neatvērās ar atslēgu"
 print("Atslēga un durvis: OK (+25)")
@@ -119,9 +133,7 @@ print("Atslēga un durvis: OK (+25)")
 # 7. Izeja -> "līmenis izpildīts" ar bonusu, tad next_level() -> līmenis 2
 from game.game_state import STATUS_LEVEL_COMPLETE
 g = GameState()
-e = g.level.exit_pos
-g.player_x = e[0] * s.TILE_SIZE + 8
-g.player_y = e[1] * s.TILE_SIZE + 8
+place_on_tile(g, *g.level.exit_pos)
 g.update(0.01, 0, 0, False, False)
 assert g.status == STATUS_LEVEL_COMPLETE and g.score >= s.LEVEL_BONUS
 assert g.level_stats["coins_total"] > 0, "level_stats nesaglabāja statistiku"
@@ -140,5 +152,44 @@ g.player_x, g.player_y = guard.x, guard.y
 g.update(0.01, 0, 0, False, False)
 assert g.status == STATUS_GAME_OVER
 print(f"Sargs: OK (-1 dzīvība, pie 0 — {g.game_over_reason})")
+
+# 9. 1-flīžu koridors: hitboxs iet cauri abos virzienos, neiestrēgst
+def run_corridor(rows: list[str], start_tile: tuple[int, int],
+                 moves: list[tuple[int, int, int]]) -> GameState:
+    """Spēle ar pašu karti. moves = (move_x, move_y, kadru_skaits) saraksts."""
+    g = GameState()
+    g.level = Level(rows, 1)
+    place_on_tile(g, *start_tile)
+    for mx, my, frames in moves:
+        for _ in range(frames):
+            g.update(0.1, mx, my, False, False)
+    return g
+
+def player_tile(g: GameState) -> tuple[int, int]:
+    """Lauciņš, kurā šobrīd atrodas spēlētāja hitboxa centrs."""
+    return g.level.tile_at_pixel(*g.player_center())
+
+horizontal = ["#####",
+              "#...#",
+              "#####"]
+g = run_corridor(horizontal, (1, 1), [(1, 0, 12)])
+assert player_tile(g) == (3, 1), \
+    f"iestrēga horizontālajā koridorā: {player_tile(g)}"
+g = run_corridor(horizontal, (3, 1), [(-1, 0, 12)])
+assert player_tile(g) == (1, 1), \
+    f"neatgriezās horizontālajā koridorā: {player_tile(g)}"
+
+vertical = ["###",
+            "#.#",
+            "#.#",
+            "#.#",
+            "###"]
+g = run_corridor(vertical, (1, 1), [(0, 1, 12)])
+assert player_tile(g) == (1, 3), \
+    f"iestrēga vertikālajā koridorā: {player_tile(g)}"
+g = run_corridor(vertical, (1, 3), [(0, -1, 12)])
+assert player_tile(g) == (1, 1), \
+    f"neatgriezās vertikālajā koridorā: {player_tile(g)}"
+print("1-flīžu koridori: OK (abos virzienos, bez iestrēgšanas)")
 
 print("\nVISI TESTI IZJAUTI ✅")

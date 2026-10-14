@@ -6,7 +6,20 @@ Ja skolotājs saka "ieliec 2x ātrāk" — maini PLAYER_SPEED šeit.
 
 # --- EKRĀNS ---
 TILE_SIZE = 48        # viena kartes lauciņa izmērs pikseļos
-PLAYER_SIZE = 32      # spēlētāja kvadrāta izmērs (mazāks par lauciņu, lai tilptu ejas)
+
+# --- HITBOXI (sadursmju taisnstūri) ---
+# Loģika lieto mazus plakanus hitboxus "pie kājām", nevis visu sprite,
+# tāpēc spēlētājs var normāli paiet garām kastēm un sienām.
+# player_x/player_y un guard.x/guard.y ir hitboxa augšējais kreisais stūris.
+PLAYER_HIT_W = 24     # spēlētāja hitboxa platums
+PLAYER_HIT_H = 14     # spēlētāja hitboxa augstums
+GUARD_HIT_W = 26      # sarga hitboxa platums
+GUARD_HIT_H = 14      # sarga hitboxa augstums
+FEET_MARGIN = 4       # par cik pikseļiem hitboxs pacelts no lauciņa apakšas
+
+# --- SPRITES (izmēri, ko zīmē klients; sprite stāv uz hitboxa apakšas) ---
+PLAYER_SPRITE = 64    # spēlētāja sprits pikseļos
+GUARD_SPRITE = 72     # sarga sprits pikseļos
 
 # --- SPĒLĒTĀJS ---
 PLAYER_SPEED = 200    # pikseļi sekundē — cik ātrs ir kurjers

@@ -15,7 +15,8 @@ Karte ir saraksts ar teksta rindām. Katrs simbols nozīmē vienu lauciņu:
 """
 
 from game.guard import Guard
-from game.settings import TILE_SIZE, GUARD_SPEEDS
+from game.settings import (TILE_SIZE, GUARD_SPEEDS,
+                           PLAYER_HIT_W, PLAYER_HIT_H, FEET_MARGIN)
 
 # --- TRĪS LĪMEŅU KARTES (24x16, grūtība aug: vairāk sargu, lampu un sienu) ---
 
@@ -31,9 +32,9 @@ LEVEL_MAPS = [
         "#.......#..xx..#......C#",
         "#.......#......#.......#",
         "####.######.####.......#",
-        "#...L......L...........#",
-        "#..xx....xx......L.....#",
-        "#..xx....xx.......V.C..#",
+        "#....L......L..........#",
+        "#..xx....xx............#",
+        "#..xx....xx....L..V.C..#",
         "#..............#.xxx...#",
         "#C.....G.......#.L.....#",
         "###.########.########D##",
@@ -50,9 +51,9 @@ LEVEL_MAPS = [
         "########################",
         "#P....#...C...#....K...#",
         "#.....#.V.....#..xx....#",
-        "#..L......xx..#..xx....#",
-        "#.........xx..#.......C#",
-        "#.....#...L.....L......#",
+        "#.........xx..#..xx....#",
+        "#L........xx..#.......C#",
+        "#.....#L........L......#",
         "#C....#.......####..####",
         "#.....#................#",
         "#..xx....xx.....xx...V.#",
@@ -72,10 +73,10 @@ LEVEL_MAPS = [
         "########################",
         "#P.....#......#.....K..#",
         "#......#..xx..#.Vxx....#",
-        "#..L...#..xx..#..xx....#",
-        "#...........C.....L....#",
+        "#......#..xx..#..xx....#",
+        "#..L........C.........L#",
         "####.#####.###.........#",
-        "#...L.xx..L...L........#",
+        "#....Lxx...L.L.........#",
         "#.....xx.........xx...C#",
         "#..........G...........#",
         "#C......xx..........V..#",
@@ -130,10 +131,11 @@ class Level:
                 elif symbol == "L":
                     self.lamps[pos] = 0.0  # 0.0 nozīmē: lampa deg
                 elif symbol == "P":
-                    # Spēlētājs sākas lauciņa centrā (pārvēršam pikseļos)
+                    # Sākuma vieta ir hitboxa augšējais kreisais stūris:
+                    # centrēts horizontāli, tuvu lauciņa apakšai ("kājas")
                     self.player_start = (
-                        col_index * TILE_SIZE + (TILE_SIZE - 32) // 2,
-                        row_index * TILE_SIZE + (TILE_SIZE - 32) // 2,
+                        col_index * TILE_SIZE + (TILE_SIZE - PLAYER_HIT_W) // 2,
+                        row_index * TILE_SIZE + TILE_SIZE - PLAYER_HIT_H - FEET_MARGIN,
                     )
                 elif symbol == "G":
                     self.guards.append(Guard(col_index, row_index, True, guard_speed))

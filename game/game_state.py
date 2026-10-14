@@ -9,7 +9,6 @@ import math
 
 from game import settings as s
 from game.level import Level, LEVEL_MAPS
-from game.guard import GUARD_SIZE
 
 # Iespējamie spēles stāvokļi
 STATUS_PLAYING = "playing"
@@ -100,19 +99,23 @@ class GameState:
         """Pabīda spēlētāju, bet neļauj iet caur sienām.
 
         Kustību dala pa asīm: vispirms X, tad Y. Tā var slīdēt gar sienu,
-        pat ja spiež pa diagonāli.
+        pat ja spiež pa diagonāli. Sadursmēm lieto hitboxu "pie kājām",
+        nevis visu sprite — tā var normāli paiet garām kastēm.
         """
         new_x = self.player_x + move_x * s.PLAYER_SPEED * dt
-        if not self.level.rect_hits_solid(new_x, self.player_y, s.PLAYER_SIZE, s.PLAYER_SIZE):
+        if not self.level.rect_hits_solid(new_x, self.player_y,
+                                          s.PLAYER_HIT_W, s.PLAYER_HIT_H):
             self.player_x = new_x
 
         new_y = self.player_y + move_y * s.PLAYER_SPEED * dt
-        if not self.level.rect_hits_solid(self.player_x, new_y, s.PLAYER_SIZE, s.PLAYER_SIZE):
+        if not self.level.rect_hits_solid(self.player_x, new_y,
+                                          s.PLAYER_HIT_W, s.PLAYER_HIT_H):
             self.player_y = new_y
 
     def player_center(self) -> tuple[float, float]:
-        """Spēlētāja centra punkts pikseļos (vajadzīgs attālumu mērīšanai)."""
-        return (self.player_x + s.PLAYER_SIZE / 2, self.player_y + s.PLAYER_SIZE / 2)
+        """Hitboxa centra punkts pikseļos (vajadzīgs attālumu mērīšanai)."""
+        return (self.player_x + s.PLAYER_HIT_W / 2,
+                self.player_y + s.PLAYER_HIT_H / 2)
 
     def _collect_coins(self) -> None:
         """Paņem monētu, ja spēlētājs uz tās uzkāpj."""
@@ -126,17 +129,19 @@ class GameState:
         """Kustina sargus un pārbauda, vai kāds noķēris spēlētāju."""
         for guard in self.level.guards:
             guard.update(dt, self.level.rect_hits_solid)
-            if self._rects_overlap(self.player_x, self.player_y, s.PLAYER_SIZE,
-                                   guard.x, guard.y, GUARD_SIZE):
+            if self._rects_overlap(self.player_x, self.player_y,
+                                   s.PLAYER_HIT_W, s.PLAYER_HIT_H,
+                                   guard.x, guard.y,
+                                   s.GUARD_HIT_W, s.GUARD_HIT_H):
                 self.lose_life("Sargs tevi noķēra!")
                 return  # viena dzīvība uz vienu kadru, ne vairāk
 
     @staticmethod
-    def _rects_overlap(ax: float, ay: float, a_size: int,
-                       bx: float, by: float, b_size: int) -> bool:
-        """Vai divi kvadrāti pārklājas (sadursmes pārbaude)."""
-        return (ax < bx + b_size and ax + a_size > bx
-                and ay < by + b_size and ay + a_size > by)
+    def _rects_overlap(ax: float, ay: float, aw: int, ah: int,
+                       bx: float, by: float, bw: int, bh: int) -> bool:
+        """Vai divi taisnstūri pārklājas (sadursmes pārbaude)."""
+        return (ax < bx + bw and ax + aw > bx
+                and ay < by + bh and ay + ah > by)
 
     def _check_light(self, dt: float) -> None:
         """1. mehānika: ja spēlētājs par ilgu stāv gaismā, zaudē dzīvību."""
