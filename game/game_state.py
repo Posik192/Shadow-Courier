@@ -9,6 +9,7 @@ import math
 
 from game import settings as s
 from game.level import Level, LEVEL_MAPS
+from game.guard import STATE_PATROL
 
 # Iespējamie spēles stāvokļi
 STATUS_PLAYING = "playing"
@@ -26,8 +27,9 @@ class GameState:
         self.lives = s.START_LIVES
         self.level_number = 1
         self.status = STATUS_PLAYING
-        self.game_over_reason = ""  # kāpēc spēle beidzās (sargs vai gaisma)
+        self.game_over_reason = ""  # kāpēc spēle beidzās (sargs noķēra)
         self.level_stats = {}       # pēdējā pabeigtā līmeņa statistika
+        self.alert_count = 0        # cik lampas trauksmes izsauktas (fāzes 3 āķis)
         self.load_level(1)
 
     def load_level(self, number: int) -> None:
@@ -36,26 +38,20 @@ class GameState:
         self.level = Level(LEVEL_MAPS[number - 1], number)
         self.player_x, self.player_y = self.level.player_start
         self.has_key = False
-        self.light_timer = 0.0    # cik ilgi spēlētājs jau stāv gaismā
-        self.lamp_cooldown = 0.0  # cik ilgi vēl nevar atslēgt lampu
-        self.level_time = 0.0     # cik ilgi spēlē šo līmeni (laika bonusam)
-        self.coins_collected = 0  # paņemtās monētas šajā līmenī (HUD rādīšanai)
-        self.message = ""         # paziņojums spēlētājam (piem. "Vajag atslēgu!")
+        self.lamp_detect_timer = 0.0  # cik ilgi spēlētājs jau stāv lampas gaismā
+        self.lamp_exposure = 0.0      # 0..1 — cik tuvu trauksmei (HUD un fāzes 3 āķis)
+        self.lamp_cooldown = 0.0      # cik ilgi vēl nevar atslēgt lampu
+        self.level_time = 0.0         # cik ilgi spēlē šo līmeni (laika bonusam)
+        self.coins_collected = 0      # paņemtās monētas šajā līmenī (HUD rādīšanai)
+        self.message = ""             # paziņojums spēlētājam (piem. "Vajag atslēgu!")
 
-    def lose_life(self, reason: str) -> None:
-        """Noņem vienu dzīvību. Ja dzīvības beigušās — spēle beidzas.
+    def _caught(self) -> None:
+        """Sargs fiziski pieskāries spēlētājam — spēle uzreiz beidzas.
 
-        Ja dzīvības vēl ir: spēlētājs atgriežas līmeņa sākumā,
-        gaismas taimeris atiestatās, bet punkti un monētas paliek.
+        Dzīvības paliek tikai HUD atmiņai; TRY AGAIN ekrāns tās atjauno.
         """
-        self.lives -= 1
-        if self.lives <= 0:
-            self.status = STATUS_GAME_OVER
-            self.game_over_reason = reason
-        else:
-            self.player_x, self.player_y = self.level.player_start
-            self.light_timer = 0.0
-            self.message = f"{reason} Atlikušās dzīvības: {self.lives}"
+        self.status = STATUS_GAME_OVER
+        self.game_over_reason = "A guard spotted you."
 
     # --- Galvenā metode: klients to izsauc 60 reizes sekundē ---
 
@@ -76,7 +72,9 @@ class GameState:
         self._move_player(move_x, move_y, dt)
         self._collect_coins()
         self._update_guards(dt)
-        self._check_light(dt)
+        if self.status != STATUS_PLAYING:
+            return  # sargs noķēra — tālāk šajā kadrā neko neskaitām
+        self._check_lamp_alert(dt)
 
         if disable_lamp:
             self._disable_nearest_lamp()
@@ -126,15 +124,16 @@ class GameState:
             self.coins_collected += 1
 
     def _update_guards(self, dt: float) -> None:
-        """Kustina sargus un pārbauda, vai kāds noķēris spēlētāju."""
+        """Kustina sargus un pārbauda, vai kāds fiziski noķēris spēlētāju."""
+        player_center = self.player_center()
         for guard in self.level.guards:
-            guard.update(dt, self.level.rect_hits_solid)
+            guard.update(dt, self.level, player_center)
             if self._rects_overlap(self.player_x, self.player_y,
                                    s.PLAYER_HIT_W, s.PLAYER_HIT_H,
                                    guard.x, guard.y,
                                    s.GUARD_HIT_W, s.GUARD_HIT_H):
-                self.lose_life("Sargs tevi noķēra!")
-                return  # viena dzīvība uz vienu kadru, ne vairāk
+                self._caught()
+                return  # viena noķeršana uz kadru ir gana
 
     @staticmethod
     def _rects_overlap(ax: float, ay: float, aw: int, ah: int,
@@ -143,17 +142,37 @@ class GameState:
         return (ax < bx + bw and ax + aw > bx
                 and ay < by + bh and ay + ah > by)
 
-    def _check_light(self, dt: float) -> None:
-        """1. mehānika: ja spēlētājs par ilgu stāv gaismā, zaudē dzīvību."""
-        if self._player_in_light():
-            self.light_timer += dt
-            if self.light_timer >= s.LIGHT_TIME_LIMIT:
-                self.lose_life("Pārāk ilgi stāvēji gaismā!")
+    def _check_lamp_alert(self, dt: float) -> None:
+        """1. mehānika: lampas gaisma izsauc sargu trauksmi (vairs nenoņem dzīvību).
+
+        Ja spēlētāja hitboxa centrs nepārtraukti uzturas kādas DEDZOŠAS
+        lampas gaismas zonā LAMP_DETECT_TIME sekundes, visi sargi pāriet
+        LAMP_ALERT stāvoklī un skrien uz pēdējo redzēto vietu. Kamēr kāda
+        trauksme jau rit (sargi nav PATROL), taimeris nekrājas — tā viena
+        un tā pati trauksme netiek palaista katrā kadrā.
+        """
+        alarm_active = any(guard.state != STATE_PATROL
+                           for guard in self.level.guards)
+        if self._player_in_light() and not alarm_active:
+            self.lamp_detect_timer += dt
+            if self.lamp_detect_timer >= s.LAMP_DETECT_TIME:
+                self._raise_lamp_alarm()
         else:
-            self.light_timer = 0.0  # ārā no gaismas taimeris atiestatās
+            self.lamp_detect_timer = 0.0  # ārā no gaismas taimeris atiestatās
+        self.lamp_exposure = min(1.0, self.lamp_detect_timer / s.LAMP_DETECT_TIME)
+
+    def _raise_lamp_alarm(self) -> None:
+        """Izsauc trauksmi: visi sargi skrien uz spēlētāja pašreizējo vietu."""
+        position = self.player_center()
+        for guard in self.level.guards:
+            guard.start_lamp_alert(position, self.level)
+        self.alert_count += 1  # fāzes 3 āķis: trauksmju skaitītājs
+        self.lamp_detect_timer = 0.0
+        self.lamp_exposure = 0.0
+        self.message = "Sargi pamanīja tevi lampas gaismā!"
 
     def _player_in_light(self) -> bool:
-        """Vai spēlētājs šobrīd atrodas kādas DEDZOŠAS lampas gaismā."""
+        """Vai spēlētāja centrs šobrīd atrodas kādas DEDZOŠAS lampas zonā."""
         px, py = self.player_center()
         for (col, row), off_timer in self.level.lamps.items():
             if off_timer > 0:

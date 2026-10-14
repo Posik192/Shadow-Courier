@@ -354,15 +354,21 @@ def get_light_cone(radius: int) -> pygame.Surface:
     return _light_cache[key]
 
 
-def get_rotated_cone(direction: tuple[int, int], colored: bool) -> pygame.Surface:
+def get_rotated_cone(direction: tuple[float, float], colored: bool) -> pygame.Surface:
     """Atgriež luktura konusu, pagrieztu konkrētā virzienā (kešots).
 
     direction — (dx, dy), piem., (1, 0) = pa labi, (0, 1) = uz leju.
+    Peldošie virzieni tiek noapaļoti līdz 5 grādiem, lai kešā neuzkrātos
+    simtiem gandrīz vienādu konusu.
     colored=False — melna/alpha versija tumsas izgriešanai (SUB),
     colored=True  — silti dzeltena versija mirdzumam (ADD).
     """
     dx, dy = direction
-    key = ("cone_rot", dx, dy, colored)
+    # Konuss zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
+    # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
+    angle = -math.degrees(math.atan2(dy, dx))
+    rounded = 5 * round(angle / 5)
+    key = ("cone_rot", rounded, colored)
     if key not in _light_cache:
         if colored:
             cone = _build_glow_pixels(
@@ -370,10 +376,7 @@ def get_rotated_cone(direction: tuple[int, int], colored: bool) -> pygame.Surfac
                 lambda d, a: _cone_value(d, a, GUARD_LIGHT_RADIUS))
         else:
             cone = get_light_cone(GUARD_LIGHT_RADIUS)
-        # Konuss zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
-        # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
-        angle = -math.degrees(math.atan2(dy, dx))
-        _light_cache[key] = pygame.transform.rotate(cone, angle)
+        _light_cache[key] = pygame.transform.rotate(cone, rounded)
     return _light_cache[key]
 
 
@@ -421,11 +424,7 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
 
     # 3. solis: sargu lukturu konusi (centri = hitboxa centrs)
     for guard in state.level.guards:
-        if guard.horizontal:
-            guard_dir = (guard.direction, 0)
-        else:
-            guard_dir = (0, guard.direction)
-        cone = get_rotated_cone(guard_dir, colored=False)
+        cone = get_rotated_cone(guard.facing, colored=False)
         center = (guard.x + GUARD_HIT_W / 2, guard.y + GUARD_HIT_H / 2)
         darkness.blit(cone, cone.get_rect(center=center),
                       special_flags=pygame.BLEND_RGBA_SUB)
@@ -448,11 +447,7 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
             window.blit(glow, glow.get_rect(center=center),
                         special_flags=pygame.BLEND_RGB_ADD)
     for guard in state.level.guards:
-        if guard.horizontal:
-            guard_dir = (guard.direction, 0)
-        else:
-            guard_dir = (0, guard.direction)
-        cone_glow = get_rotated_cone(guard_dir, colored=True)
+        cone_glow = get_rotated_cone(guard.facing, colored=True)
         center = (guard.x + GUARD_HIT_W / 2, guard.y + GUARD_HIT_H / 2)
         window.blit(cone_glow, cone_glow.get_rect(center=center),
                     special_flags=pygame.BLEND_RGB_ADD)
@@ -475,6 +470,23 @@ FACING_ANGLES = {(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}
 
 # Virziens (x, y) -> virzienu sprites vārdnīcas atslēga
 FACING_NAMES = {(0, 1): "down", (0, -1): "up", (1, 0): "right", (-1, 0): "left"}
+
+
+def _facing_cardinal(facing: tuple[float, float]) -> tuple[int, int]:
+    """No sarga peldošā skata virziena atgriež tuvāko no 4 virzieniem (sprites)."""
+    fx, fy = facing
+    if abs(fx) >= abs(fy):
+        return (1, 0) if fx >= 0 else (-1, 0)
+    return (0, 1) if fy >= 0 else (0, -1)
+
+
+def _draw_alert_icon(window: pygame.Surface, sx: float, sy: float,
+                     sprite_size: int) -> None:
+    """Uzzīmē sarkanu "!" virs sarga (divi pikseļu taisnstūri: svītra + punkts)."""
+    center_x = sx + sprite_size / 2
+    top = sy - 24
+    pygame.draw.rect(window, COLOR_BAD, (center_x - 3, top, 6, 14))
+    pygame.draw.rect(window, COLOR_BAD, (center_x - 3, top + 17, 6, 5))
 
 
 def _pick_character_sprite(sprites: dict, name: str, facing: tuple[int, int],
@@ -549,20 +561,16 @@ def draw_world(window: pygame.Surface, state: GameState,
         prop_name = PROP_SPRITES[(col * 7 + row * 13) % len(PROP_SPRITES)]
         draw_sprite(window, sprites[prop_name], col * t, row * t, t, COLOR_WALL)
 
-    # Sargi (pagriežas kustības virzienā; sargs vienmēr patrulē,
-    # tāpēc šūpošanās un kadru animācija rit pastāvīgi).
+    # Sargi (pagriežas skata virzienā; brīdinājuma laikā stāv uz vietas).
     # guard.x/.y ir sarga HITBOXA augšējais kreisais stūris; tēlu
     # zīmē ar "kājām uz hitboxa" (skat. sprite_pos).
     for guard in level.guards:
-        if guard.horizontal:
-            guard_dir = (guard.direction, 0)
-        else:
-            guard_dir = (0, guard.direction)
+        guard_dir = _facing_cardinal(guard.facing)
         # Nobīde no sarga pozīcijas, lai visi sargi neietu sinhroni
         offset = (int(guard.x) + int(guard.y)) // 10
         sprite, angle = _pick_character_sprite(
-            sprites, "guard", guard_dir, now, offset, moving=True)
-        sway = SWAY_DEGREES * math.sin(now * 0.02 + offset)
+            sprites, "guard", guard_dir, now, offset, moving=guard.moving)
+        sway = SWAY_DEGREES * math.sin(now * 0.02 + offset) if guard.moving else 0.0
         sx, sy = sprite_pos(guard.x, guard.y, GUARD_HIT_W, GUARD_HIT_H,
                             GUARD_SPRITE)
         draw_sprite(window, sprite, sx, sy, GUARD_SPRITE,
@@ -585,6 +593,14 @@ def draw_world(window: pygame.Surface, state: GameState,
     # Tumsa + gaismas PĒC visa cita — tā "nosedz" pasauli,
     # izņemot vietas, kur deg lampas, spīd lukturi un iet kurjers
     draw_lighting(window, state)
+
+    # Sarkanais "!" virs sarga zīmējam PĒC tumsas slāņa, lai ikona
+    # paliktu spilgta arī tumsā (tā ir UI zīme, ne pasaules daļa)
+    for guard in level.guards:
+        if guard.alert_icon_timer > 0:
+            sx, sy = sprite_pos(guard.x, guard.y, GUARD_HIT_W, GUARD_HIT_H,
+                                GUARD_SPRITE)
+            _draw_alert_icon(window, sx, sy, GUARD_SPRITE)
 
 
 # ============================================================
@@ -683,12 +699,11 @@ def draw_hud(window: pygame.Surface, state: GameState,
         window.blit(font.render("READY", True, UI_ACCENT),
                     (x2 + bar_w + 10, row2_y))
 
-    # --- 2. rinda: gaismas brīdinājums (sarkana josla + teksts) ---
-    if state.light_timer > 0:
+    # --- 2. rinda: lampas atklāšanas brīdinājums (sarkana josla + teksts) ---
+    if state.lamp_exposure > 0:
         warn_x = x2 + bar_w + 70
-        part = min(1.0, state.light_timer / gs.LIGHT_TIME_LIMIT)
         pygame.draw.rect(window, COLOR_BAD,
-                         (warn_x, bar_y, int(100 * part), bar_h))
+                         (warn_x, bar_y, int(100 * state.lamp_exposure), bar_h))
         window.blit(font.render("LIGHT!", True, COLOR_BAD),
                     (warn_x + 108, row2_y))
 
