@@ -18,6 +18,7 @@ from game import settings as gs
 from game.game_state import (GameState, STATUS_PLAYING, STATUS_GAME_OVER,
                              STATUS_WON, STATUS_LEVEL_COMPLETE)
 from game.level import LEVEL_MAPS
+from game.rank import better_rank
 
 # --- LOGA UZSTĀDĪJUMI ---
 FPS = 60           # kadri sekundē
@@ -104,7 +105,9 @@ SPRITE_SIZES = {
     "door": gs.TILE_SIZE, "exit": gs.TILE_SIZE,
     "lamp_on": gs.TILE_SIZE, "lamp_off": gs.TILE_SIZE,
     "player": PLAYER_SPRITE, "guard": GUARD_SPRITE,
-    "coin": 26, "key": 30,
+    "coin": 26, "key": 30, "package": 26,
+    # Slēptuve (metāla skapītis) — aizņem visu flīzi, bet flīze nav cieta
+    "hideout": gs.TILE_SIZE,
     # Dekoratīvie šķēršļi (kastes un mucas kartēs apzīmētas ar 'x')
     "prop_crate_big": gs.TILE_SIZE, "prop_crate_mid": gs.TILE_SIZE,
     "prop_crate_small": gs.TILE_SIZE, "prop_barrel": gs.TILE_SIZE,
@@ -561,6 +564,23 @@ def draw_world(window: pygame.Surface, state: GameState,
         prop_name = PROP_SPRITES[(col * 7 + row * 13) % len(PROP_SPRITES)]
         draw_sprite(window, sprites[prop_name], col * t, row * t, t, COLOR_WALL)
 
+    # Slēptuves (metāla skapīši) — kartē apzīmētas ar 'H', flīze paliek brīva
+    for col, row in level.hideouts:
+        draw_sprite(window, sprites["hideout"], col * t, row * t, t, UI_LINE)
+
+    # Sūtījums (misijas objekts) ar vieglu pulsējošu mirdzumu, kamēr nav paņemts
+    if level.package_pos is not None and not level.package_taken:
+        pcol, prow = level.package_pos
+        draw_sprite(window, sprites["package"],
+                    pcol * t + 11, prow * t + 11, 26, UI_ACCENT)
+        # Mirdzums: spilgtums elpo ar sinusa viļņi
+        # (noapaļots, lai gaismas kešā neuzkrātos simtiem variantu)
+        pulse = round(0.25 + 0.15 * math.sin(now * 0.006), 2)
+        glow = get_glow_circle(30, UI_ACCENT, pulse)
+        center = (pcol * t + t // 2, prow * t + t // 2)
+        window.blit(glow, glow.get_rect(center=center),
+                    special_flags=pygame.BLEND_RGB_ADD)
+
     # Sargi (pagriežas skata virzienā; brīdinājuma laikā stāv uz vietas).
     # guard.x/.y ir sarga HITBOXA augšējais kreisais stūris; tēlu
     # zīmē ar "kājām uz hitboxa" (skat. sprite_pos).
@@ -587,6 +607,10 @@ def draw_world(window: pygame.Surface, state: GameState,
         sprites, "player", player_facing, now, 0, player_moving)
     sx, sy = sprite_pos(state.player_x, state.player_y,
                         PLAYER_HIT_W, PLAYER_HIT_H, PLAYER_SPRITE)
+    if state.hidden and sprite is not None:
+        # Paslēpies slēptuvē: kurjers puscaurspīdīgs (alpha ~70)
+        sprite = sprite.copy()
+        sprite.set_alpha(70)
     draw_sprite(window, sprite, sx, sy, PLAYER_SPRITE,
                 COLOR_PLAYER, angle + sway)
 
@@ -631,7 +655,8 @@ def draw_top_bar(window: pygame.Surface, state: GameState,
     title = font.render("SHADOW COURIER", True, UI_ACCENT)
     window.blit(title, (12, (TOP_BAR_HEIGHT - title.get_height()) // 2))
     info = (f"LEVEL {state.level_number}   |   SCORE {state.score}"
-            f"   |   KEY {1 if state.has_key else 0}")
+            f"   |   KEY {1 if state.has_key else 0}"
+            f"   |   PACKAGE {1 if state.level.package_taken else 0}/1")
     img = font.render(info, True, UI_TEXT)
     window.blit(img, (width - img.get_width() - 12,
                       (TOP_BAR_HEIGHT - img.get_height()) // 2))
@@ -699,16 +724,61 @@ def draw_hud(window: pygame.Surface, state: GameState,
         window.blit(font.render("READY", True, UI_ACCENT),
                     (x2 + bar_w + 10, row2_y))
 
-    # --- 2. rinda: lampas atklāšanas brīdinājums (sarkana josla + teksts) ---
+    # --- 2. rinda: EXPOSURE josla (cik tuvu lampas trauksmei) ---
+    exp_x = x2 + bar_w + 70
+    exp_label = font.render("EXPOSURE", True, UI_DIM)
+    window.blit(exp_label, (exp_x, row2_y))
+    exp_bar_x = exp_x + exp_label.get_width() + 10
+    pygame.draw.rect(window, (44, 48, 54), (exp_bar_x, bar_y, 100, bar_h))
     if state.lamp_exposure > 0:
-        warn_x = x2 + bar_w + 70
-        pygame.draw.rect(window, COLOR_BAD,
-                         (warn_x, bar_y, int(100 * state.lamp_exposure), bar_h))
-        window.blit(font.render("LIGHT!", True, COLOR_BAD),
-                    (warn_x + 108, row2_y))
+        pygame.draw.rect(window, UI_ACCENT,
+                         (exp_bar_x, bar_y,
+                          int(100 * state.lamp_exposure), bar_h))
+
+    # --- 2. rinda: interakcijas prompts ("E PICK UP PACKAGE" u.tml.) ---
+    prompt = interaction_prompt(state)
+    if prompt:
+        prompt_img = font.render(prompt, True, UI_ACCENT)
+        window.blit(prompt_img, (exp_bar_x + 130, row2_y))
 
     # Augšējā plānā josla (zīmējas pār pasaules augšu)
     draw_top_bar(window, state, fonts)
+
+    # Misijas teksts līmeņa sākumā (~2 s, centrā pāri pasaulei)
+    if state.mission_text_timer > 0 and state.level_number <= len(gs.MISSION_TEXTS):
+        mission = gs.MISSION_TEXTS[state.level_number - 1]
+        mission_img = fonts["font"].render(mission, True, UI_ACCENT)
+        world_h = state.level.height * gs.TILE_SIZE
+        mx = (width - mission_img.get_width()) // 2
+        my = world_h // 3
+        # Tumšs pamatnes aiz teksta, lai tas lasās arī gaišās vietās
+        back = pygame.Surface((mission_img.get_width() + 24,
+                               mission_img.get_height() + 12), pygame.SRCALPHA)
+        back.fill((14, 16, 20, 200))
+        window.blit(back, (mx - 12, my - 6))
+        window.blit(mission_img, (mx, my))
+
+
+def interaction_prompt(state: GameState) -> str:
+    """Kuru E-darbības uzvedni rādīt HUD (tukša virkne = nekā).
+
+    Pienākot klāt sūtījumam, slēptuvei vai izejai bez sūtījuma,
+    spēlētājs redz, ko var darīt (vai kas trūkst).
+    """
+    if state.hidden:
+        return "E EXIT HIDEOUT"
+    if state.package_in_range():
+        return "E PICK UP PACKAGE"
+    if state.hideout_in_range() is not None:
+        return "E HIDE"
+    # Pie izejas bez sūtījuma — atgādinām, ka misijas objekts vēl nav rokā
+    if not state.level.package_taken:
+        px, py = state.player_center()
+        ex = state.level.exit_pos[0] * gs.TILE_SIZE + gs.TILE_SIZE / 2
+        ey = state.level.exit_pos[1] * gs.TILE_SIZE + gs.TILE_SIZE / 2
+        if math.hypot(px - ex, py - ey) < gs.TILE_SIZE:
+            return "MISSION ITEM REQUIRED"
+    return ""
 
 
 # ============================================================
@@ -809,6 +879,8 @@ def level_complete_options(state: GameState) -> list[str]:
     options = []
     if state.level_number < len(LEVEL_MAPS):
         options.append("NEXT LEVEL")
+    # RETRY restartē līmeni un atjauno punktus uz līmeņa sākuma stāvokli
+    options.append("RETRY FOR BETTER RANK")
     options.append("LEVEL SELECT")
     return options
 
@@ -841,6 +913,9 @@ def draw_level_select(window: pygame.Surface, fonts: dict, ui: dict) -> None:
         completed = n in ui["completed_levels"]
         if completed:
             status, status_color = "COMPLETED", UI_ACCENT
+            # Ja šajā sesijā līmenis pabeigts — rādam labāko vērtējumu
+            if n in ui["best_ranks"]:
+                status = f"COMPLETED  {ui['best_ranks'][n]}"
         elif unlocked:
             status, status_color = "AVAILABLE", UI_DIM
         else:
@@ -934,8 +1009,8 @@ def _format_time(seconds: float) -> str:
 
 def draw_level_complete(window: pygame.Surface, fonts: dict,
                         state: GameState, ui: dict) -> None:
-    """LEVEL COMPLETE ekrāns: statistika (COINS, TIME, SCORE) + opcijas."""
-    rect = draw_panel(window, 520, 450)
+    """LEVEL COMPLETE ekrāns: statistika, lielais vērtējuma burts + opcijas."""
+    rect = draw_panel(window, 560, 520)
     cx = rect.centerx
     draw_panel_title(window, fonts, rect, "LEVEL COMPLETE")
     sub = fonts["small"].render(
@@ -943,23 +1018,31 @@ def draw_level_complete(window: pygame.Surface, fonts: dict,
         True, UI_DIM)
     window.blit(sub, sub.get_rect(center=(cx, rect.top + 100)))
 
-    # Statistika: kreisajā pusē nosaukums, labajā — vērtība
+    # Lielais vērtējuma burts (S/A/B/C) paneļa labajā augšējā stūrī
     stats = state.level_stats or {}
+    rank = stats.get("rank", "C")
+    rank_img = fonts["big"].render(rank, True, UI_ACCENT)
+    window.blit(rank_img, rank_img.get_rect(center=(rect.right - 70,
+                                                    rect.top + 140)))
+
+    # Statistika: kreisajā pusē nosaukums, labajā — vērtība
     rows = [
+        ("PACKAGE DELIVERED", "YES"),
         ("COINS", f"{stats.get('coins', 0)}/{stats.get('coins_total', 0)}"),
         ("TIME", _format_time(stats.get("time", 0.0))),
+        ("ALERTS", str(stats.get("alerts", 0))),
         ("SCORE", str(stats.get("score", state.score))),
     ]
-    y = rect.top + 140
+    y = rect.top + 150
     for label, value in rows:
         label_img = fonts["font"].render(label, True, UI_DIM)
         value_img = fonts["font"].render(value, True, UI_TEXT)
         window.blit(label_img, (rect.left + 70, y))
-        window.blit(value_img, (rect.right - 70 - value_img.get_width(), y))
+        window.blit(value_img, (rect.right - 150 - value_img.get_width(), y))
         y += 38
 
     draw_menu_options(window, fonts["font"], level_complete_options(state),
-                      ui["selection"], cx, rect.bottom - 110, line_height=42)
+                      ui["selection"], cx, rect.bottom - 140, line_height=42)
 
 
 def draw_game_over(window: pygame.Surface, fonts: dict,
@@ -1121,6 +1204,13 @@ def handle_key(key: int, current_screen: str, state: GameState,
                 state.next_level()
                 ui["selection"] = 0
                 return SCREEN_GAME
+            if options[sel] == "RETRY FOR BETTER RANK":
+                # Restartē līmeni; punkti atgriežas uz līmeņa sākuma vērtību
+                state.score = state.level_start_score
+                state.load_level(state.level_number)
+                state.status = STATUS_PLAYING
+                ui["selection"] = 0
+                return SCREEN_GAME
             ui["selection"] = 0
             return SCREEN_LEVEL_SELECT
 
@@ -1164,6 +1254,18 @@ def handle_key(key: int, current_screen: str, state: GameState,
     return current_screen
 
 
+def remember_rank(ui: dict, state: GameState) -> None:
+    """Saglabā labāko vērtējuma burtu līmenim sesijas atmiņā (ui["best_ranks"])."""
+    rank = state.level_stats.get("rank")
+    if rank is None:
+        return
+    previous = ui["best_ranks"].get(state.level_number)
+    if previous is None:
+        ui["best_ranks"][state.level_number] = rank
+    else:
+        ui["best_ranks"][state.level_number] = better_rank(previous, rank)
+
+
 def main() -> None:
     """Spēles galvenā funkcija: atver logu un griež spēles ciklu."""
     pygame.init()
@@ -1190,6 +1292,7 @@ def main() -> None:
         "fullscreen": False,
         "game_started": False,     # vai šajā sesijā spēle jau sākta (CONTINUE)
         "completed_levels": set(), # šajā sesijā pabeigtie līmeņi (1, 2, 3)
+        "best_ranks": {},          # labākais vērtējuma burts katram līmenim
     }
 
     current_screen = SCREEN_MENU
@@ -1230,10 +1333,12 @@ def main() -> None:
                 ui["selection"] = 0
             elif state.status == STATUS_WON:
                 ui["completed_levels"].add(state.level_number)
+                remember_rank(ui, state)
                 current_screen = SCREEN_WON
                 ui["selection"] = 0
             elif state.status == STATUS_LEVEL_COMPLETE:
                 ui["completed_levels"].add(state.level_number)
+                remember_rank(ui, state)
                 current_screen = SCREEN_LEVEL_COMPLETE
                 ui["selection"] = 0
         else:

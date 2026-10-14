@@ -34,6 +34,19 @@ LAMP_DISABLE_RANGE = 150  # no cik tālu var atslēgt lampu ar Space (pikseļi)
 LAMP_OFF_TIME = 5.0       # cik sekundes lampa paliek izslēgta
 LAMP_COOLDOWN = 8.0       # cik sekundes jāgaida, līdz var atkal atslēgt lampu
 
+# --- 3. FĀZE: sūtījums, slēptuves, vērtējumi ---
+INTERACT_RADIUS = 28      # cik tuvu flīzes centram (px) jābūt, lai ar E paņemtu sūtījumu vai paslēptos
+EXPOSURE_DECAY_TIME = 1.0 # par cik sekundēm EXPOSURE josla nokrīt līdz 0, kad spēlētājs vairs nav gaismā
+MISSION_TEXT_TIME = 2.0   # cik sekundes līmeņa sākumā rāda misijas tekstu ekrānā
+# Misijas teksti pa līmeņiem (ekrānā, angliski)
+MISSION_TEXTS = [
+    "MISSION 01: Retrieve the encrypted package.",
+    "MISSION 02: Recover the parcel from the security wing.",
+    "MISSION 03: Escape the loading bay with the package.",
+]
+# Laika robežas S vērtējumam (sekundes) katram līmenim — ja lēnāk, S vairs nav
+RANK_S_TIME = [60, 90, 120]
+
 # --- SARGI ---
 GUARD_SPEEDS = [80, 110, 140]  # sarga patruļas ātrums (pikseļi/sek) katram līmenim
 

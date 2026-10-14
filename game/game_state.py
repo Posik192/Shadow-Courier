@@ -10,6 +10,7 @@ import math
 from game import settings as s
 from game.level import Level, LEVEL_MAPS
 from game.guard import STATE_PATROL
+from game.rank import calculate_rank
 
 # Iespējamie spēles stāvokļi
 STATUS_PLAYING = "playing"
@@ -43,6 +44,10 @@ class GameState:
         self.lamp_cooldown = 0.0      # cik ilgi vēl nevar atslēgt lampu
         self.level_time = 0.0         # cik ilgi spēlē šo līmeni (laika bonusam)
         self.coins_collected = 0      # paņemtās monētas šajā līmenī (HUD rādīšanai)
+        self.alert_count = 0          # izsauktās trauksmes šajā līmenī (rangam)
+        self.hidden = False           # vai kurjers šobrīd paslēpies slēptuvē
+        self.mission_text_timer = s.MISSION_TEXT_TIME  # misijas teksts ekrānā
+        self.level_start_score = self.score  # punkti līmeņa sākumā (RETRY tos atjauno)
         self.message = ""             # paziņojums spēlētājam (piem. "Vajag atslēgu!")
 
     def _caught(self) -> None:
@@ -76,8 +81,8 @@ class GameState:
             return  # sargs noķēra — tālāk šajā kadrā neko neskaitām
         self._check_lamp_alert(dt)
 
-        if disable_lamp:
-            self._disable_nearest_lamp()
+        if disable_lamp and not self.hidden:
+            self._disable_nearest_lamp()  # paslēpies lampu izslēgt nevar
         if interact:
             self._interact()
 
@@ -86,9 +91,11 @@ class GameState:
     # --- Atsevišķas mazas metodes katram noteikumam ---
 
     def _update_timers(self, dt: float) -> None:
-        """Samazina visus taimerus (lampu izslēgšana un cooldown)."""
+        """Samazina visus taimerus (lampu izslēgšana, cooldown, misijas teksts)."""
         if self.lamp_cooldown > 0:
             self.lamp_cooldown = max(0.0, self.lamp_cooldown - dt)
+        if self.mission_text_timer > 0:
+            self.mission_text_timer = max(0.0, self.mission_text_timer - dt)
         for lamp in self.level.lamps:
             if self.level.lamps[lamp] > 0:
                 self.level.lamps[lamp] = max(0.0, self.level.lamps[lamp] - dt)
@@ -99,7 +106,10 @@ class GameState:
         Kustību dala pa asīm: vispirms X, tad Y. Tā var slīdēt gar sienu,
         pat ja spiež pa diagonāli. Sadursmēm lieto hitboxu "pie kājām",
         nevis visu sprite — tā var normāli paiet garām kastēm.
+        Paslēpies slēptuvē (hidden) kurjers nekustas — WASD ignorējas.
         """
+        if self.hidden:
+            return
         new_x = self.player_x + move_x * s.PLAYER_SPEED * dt
         if not self.level.rect_hits_solid(new_x, self.player_y,
                                           s.PLAYER_HIT_W, s.PLAYER_HIT_H):
@@ -116,7 +126,9 @@ class GameState:
                 self.player_y + s.PLAYER_HIT_H / 2)
 
     def _collect_coins(self) -> None:
-        """Paņem monētu, ja spēlētājs uz tās uzkāpj."""
+        """Paņem monētu, ja spēlētājs uz tās uzkāpj. Paslēpies nevar vākt."""
+        if self.hidden:
+            return
         tile = self.level.tile_at_pixel(*self.player_center())
         if tile in self.level.coins:
             self.level.coins.remove(tile)
@@ -125,9 +137,15 @@ class GameState:
 
     def _update_guards(self, dt: float) -> None:
         """Kustina sargus un pārbauda, vai kāds fiziski noķēris spēlētāju."""
-        player_center = self.player_center()
+        # Paslēpies spēlētājs sargiem ir neredzams: padodam None,
+        # tad guard._can_see_player vienmēr atgriež False.
+        player_center = None if self.hidden else self.player_center()
         for guard in self.level.guards:
             guard.update(dt, self.level, player_center)
+            # Paslēpies = drošs: pat ja sargs stāv uz tās pašas vietas,
+            # noķeršana nenotiek (hitboxu pārbaudi izlaižam).
+            if self.hidden:
+                continue
             if self._rects_overlap(self.player_x, self.player_y,
                                    s.PLAYER_HIT_W, s.PLAYER_HIT_H,
                                    guard.x, guard.y,
@@ -146,20 +164,30 @@ class GameState:
         """1. mehānika: lampas gaisma izsauc sargu trauksmi (vairs nenoņem dzīvību).
 
         Ja spēlētāja hitboxa centrs nepārtraukti uzturas kādas DEDZOŠAS
-        lampas gaismas zonā LAMP_DETECT_TIME sekundes, visi sargi pāriet
-        LAMP_ALERT stāvoklī un skrien uz pēdējo redzēto vietu. Kamēr kāda
-        trauksme jau rit (sargi nav PATROL), taimeris nekrājas — tā viena
-        un tā pati trauksme netiek palaista katrā kadrā.
+        lampas gaismas zonā, EXPOSURE josla piepildās LAMP_DETECT_TIME
+        sekundēs; pie pilnas joslas visi sargi pāriet LAMP_ALERT stāvoklī.
+        Ārpus gaismas trauksmes taimeris atiestatās uzreiz, bet EXPOSURE
+        josla krīt lēnām — līdz 0 par EXPOSURE_DECAY_TIME sekundēm.
+        Paslēpies slēptuvē (hidden) exposure neaug un trauksme nenotiek.
+        Kamēr kāda trauksme jau rit (sargi nav PATROL), taimeris nekrājas —
+        tā viena un tā pati trauksme netiek palaista katrā kadrā.
         """
         alarm_active = any(guard.state != STATE_PATROL
                            for guard in self.level.guards)
-        if self._player_in_light() and not alarm_active:
+        in_light = self._player_in_light() and not self.hidden
+        if in_light and not alarm_active:
             self.lamp_detect_timer += dt
             if self.lamp_detect_timer >= s.LAMP_DETECT_TIME:
                 self._raise_lamp_alarm()
         else:
             self.lamp_detect_timer = 0.0  # ārā no gaismas taimeris atiestatās
-        self.lamp_exposure = min(1.0, self.lamp_detect_timer / s.LAMP_DETECT_TIME)
+        # EXPOSURE josla: gaismā aug līdz 1.0 par 0.8 s, ārpus krīt par ~1.0 s
+        if in_light:
+            self.lamp_exposure = min(1.0, self.lamp_exposure
+                                     + dt / s.LAMP_DETECT_TIME)
+        else:
+            self.lamp_exposure = max(0.0, self.lamp_exposure
+                                     - dt / s.EXPOSURE_DECAY_TIME)
 
     def _raise_lamp_alarm(self) -> None:
         """Izsauc trauksmi: visi sargi skrien uz spēlētāja pašreizējo vietu."""
@@ -211,9 +239,49 @@ class GameState:
                 best_lamp = (col, row)
         return best_lamp
 
-    def _interact(self) -> None:
-        """E taustiņš: paņem atslēgu vai atver durvis (jāstāv blakus)."""
+    # --- Tuvuma pārbaudes interakcijām (izmanto arī klients promptiem) ---
+
+    def package_in_range(self) -> bool:
+        """Vai sūtījumu šobrīd var paņemt (hitboxa centrs tuvu flīzes centram)."""
+        if self.level.package_pos is None or self.level.package_taken:
+            return False
         px, py = self.player_center()
+        mx = self.level.package_pos[0] * s.TILE_SIZE + s.TILE_SIZE / 2
+        my = self.level.package_pos[1] * s.TILE_SIZE + s.TILE_SIZE / 2
+        return math.hypot(px - mx, py - my) <= s.INTERACT_RADIUS
+
+    def hideout_in_range(self) -> tuple[int, int] | None:
+        """Atgriež tuvākās slēptuves flīzi, ja tā ir INTERACT_RADIUS attālumā."""
+        px, py = self.player_center()
+        for col, row in self.level.hideouts:
+            hx = col * s.TILE_SIZE + s.TILE_SIZE / 2
+            hy = row * s.TILE_SIZE + s.TILE_SIZE / 2
+            if math.hypot(px - hx, py - hy) <= s.INTERACT_RADIUS:
+                return (col, row)
+        return None
+
+    def _interact(self) -> None:
+        """E taustiņš: slēptuve, sūtījums, atslēga vai durvis.
+
+        Paslēpies slēptuvē E vienmēr nozīmē "iznāk" — citas darbības
+        (vākt priekšmetus, atvērt durvis) paslēpies nevar.
+        """
+        px, py = self.player_center()
+        # Iziešana no slēptuves
+        if self.hidden:
+            self.hidden = False
+            self.message = "You left the hideout."
+            return
+        # Sūtījuma paņemšana (misijas objekts)
+        if self.package_in_range():
+            self.level.package_taken = True
+            self.message = "Package retrieved!"
+            return
+        # Paslēpšanās slēptuvē
+        if self.hideout_in_range() is not None:
+            self.hidden = True
+            self.message = "Hidden!"
+            return
         # Atslēgu var paņemt, ja ir tuvumā (mazāk par pusotru lauciņu)
         if self.level.key_pos is not None:
             kx = self.level.key_pos[0] * s.TILE_SIZE + s.TILE_SIZE / 2
@@ -236,25 +304,38 @@ class GameState:
                     self.message = "Vajag atslēgu!"
 
     def _check_exit(self) -> None:
-        """Ja spēlētājs sasniedz izeju — līmenis izpildīts vai uzvara."""
+        """Ja spēlētājs sasniedz izeju — līmenis izpildīts vai uzvara.
+
+        Bez paņemta sūtījuma izeja nedarbojas — līmenis turpinās.
+        """
         tile = self.level.tile_at_pixel(*self.player_center())
         if tile != self.level.exit_pos:
+            return
+        if not self.level.package_taken:
+            self.message = "MISSION ITEM REQUIRED"
             return
         # Laika bonuss: jo ātrāk pabeidz, jo vairāk punktu
         time_left = max(0.0, s.LEVEL_TIME_LIMIT - self.level_time)
         self.score += s.LEVEL_BONUS + int(time_left * s.TIME_BONUS_PER_SECOND)
-        if self.level_number >= len(LEVEL_MAPS):
-            self.status = STATUS_WON
-            return
-        # Nav pēdējais līmenis: apstājamies uz "līmenis izpildīts" ekrāna.
-        # Klients parādīs statistiku un pēc Enter izsauks next_level().
+        # Līmeņa vērtējums (S/A/B/C) pēc monētām, trauksmēm un laika
         coins_total = self.coins_collected + len(self.level.coins)
+        rank = calculate_rank(self.coins_collected, coins_total,
+                              self.alert_count, self.level_time,
+                              self.level_number)
+        # Līmeņa statistika "līmenis izpildīts" ekrānam (un rangam WIN gadījumā)
         self.level_stats = {
             "coins": self.coins_collected,
             "coins_total": coins_total,
             "time": self.level_time,
             "score": self.score,
+            "alerts": self.alert_count,
+            "rank": rank,
         }
+        if self.level_number >= len(LEVEL_MAPS):
+            self.status = STATUS_WON
+            return
+        # Nav pēdējais līmenis: apstājamies uz "līmenis izpildīts" ekrāna.
+        # Klients parādīs statistiku un pēc Enter izsauks next_level().
         self.status = STATUS_LEVEL_COMPLETE
 
     def next_level(self) -> None:

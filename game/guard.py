@@ -66,11 +66,13 @@ class Guard:
 
     # --- Galvenā metode: GameState to izsauc vienreiz katrā kadrā ---
 
-    def update(self, dt: float, level, player_center: tuple[float, float]) -> None:
+    def update(self, dt: float, level,
+               player_center: tuple[float, float] | None) -> None:
         """Viens domāšanas solis: redze, tad stāvokļa darbība.
 
         level zina karti (sienas, BFS), player_center — spēlētāja hitboxa
-        centrs pikseļos.
+        centrs pikseļos vai None, ja spēlētājs paslēpies slēptuvē
+        (tad sargs viņu nevar pamanīt).
         """
         if self.alert_icon_timer > 0:
             self.alert_icon_timer = max(0.0, self.alert_icon_timer - dt)
@@ -245,8 +247,15 @@ class Guard:
 
     # --- Redze: luktura konuss un skata līnija ---
 
-    def _can_see_player(self, level, player_center: tuple[float, float]) -> bool:
-        """Vai spēlētājs ir luktura konusā: tuvu, leņķī un bez sienas pa ceļam."""
+    def _can_see_player(self, level,
+                        player_center: tuple[float, float] | None) -> bool:
+        """Vai spēlētājs ir luktura konusā: tuvu, leņķī un bez sienas pa ceļam.
+
+        Ja player_center ir None (spēlētājs paslēpies slēptuvē),
+        sargs viņu nevar pamanīt — vienmēr False.
+        """
+        if player_center is None:
+            return False
         gx, gy = self.center()
         px, py = player_center
         dx, dy = px - gx, py - gy

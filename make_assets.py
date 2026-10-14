@@ -149,6 +149,43 @@ def make_lamp(on: bool) -> Image.Image:
     return img
 
 
+def make_package() -> Image.Image:
+    """Slepenais sūtījums: maza dzintara krāsas paciņa/datu futrālis.
+
+    Zīmēta 26x26 ar caurspīdīgu fonu; spēlē virs tās vēl uzzīmē
+    vieglu mirdzumu (skat. client/main.py draw_world).
+    """
+    s = 26
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # Futrāļa korpuss — tumši dzintara, ar gaišāku apmali
+    d.rectangle([3, 5, s - 4, s - 5], fill=(146, 100, 28, 255))
+    d.rectangle([3, 5, s - 4, s - 5], outline=(232, 185, 60, 255))
+    # Ieliekamais spraugs vidū (datu futrāļa raksts)
+    d.rectangle([8, 11, s - 9, 14], fill=(64, 44, 12, 255))
+    # Mazs "piegādes" kvadrāts un spīduma punkts
+    d.rectangle([s - 9, s - 10, s - 7, s - 8], fill=(255, 236, 170, 255))
+    d.point((6, 8), fill=(255, 236, 170, 255))
+    return img
+
+
+def make_hideout() -> Image.Image:
+    """Slēptuve: tumši pelēks metāla skapītis ar durvju līniju (48x48)."""
+    img = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # Korpuss ar nedaudz gaišāku apmali, lai izceltos uz grīdas
+    d.rectangle([4, 2, TILE - 5, TILE - 3], fill=(66, 72, 84, 255))
+    d.rectangle([4, 2, TILE - 5, TILE - 3], outline=(104, 112, 128, 255))
+    # Durvju līnija vertikāli pa vidu un divas rokturu ķepas
+    d.line([TILE // 2, 4, TILE // 2, TILE - 5], fill=(40, 44, 54, 255), width=2)
+    d.rectangle([TILE // 2 - 5, 20, TILE // 2 - 3, 26], fill=(140, 148, 164, 255))
+    d.rectangle([TILE // 2 + 3, 20, TILE // 2 + 5, 26], fill=(140, 148, 164, 255))
+    # Ventilācijas spraugas augšā
+    d.line([10, 8, TILE - 11, 8], fill=(48, 52, 62, 255))
+    d.line([10, 11, TILE - 11, 11], fill=(48, 52, 62, 255))
+    return img
+
+
 if __name__ == "__main__":
     save(make_floor(), "floor")
     save(make_wall(), "wall")
@@ -160,4 +197,6 @@ if __name__ == "__main__":
     save(make_exit(), "exit")
     save(make_lamp(True), "lamp_on")
     save(make_lamp(False), "lamp_off")
+    save(make_package(), "package")
+    save(make_hideout(), "hideout")
     print("Visas tekstūras gatavas!")

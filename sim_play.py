@@ -5,7 +5,8 @@ os.environ["SDL_VIDEODRIVER"] = "dummy"
 import pygame
 from game import settings as gs
 from game.game_state import GameState
-from client.main import HUD_HEIGHT, draw_world, draw_hud, load_sprites
+from client.main import (HUD_HEIGHT, draw_world, draw_hud, load_sprites,
+                         draw_level_complete)
 
 pygame.init()
 state = GameState()
@@ -23,6 +24,13 @@ clock = pygame.time.Clock()
 # 3600 kadri = 60 sekundes spēles
 for frame in range(3600):
     dt = clock.tick(60) / 1000.0
+    # Ja sūtījums vēl nav paņemts — teleportējamies pie M un "nospiežam" E.
+    # Bez sūtījuma izeja nedarbojas, tāpēc sims to paņem vispirms.
+    if state.status == "playing" and not state.level.package_taken:
+        pc, pr = state.level.package_pos
+        state.player_x = pc * gs.TILE_SIZE + (gs.TILE_SIZE - gs.PLAYER_HIT_W) // 2
+        state.player_y = pr * gs.TILE_SIZE + (gs.TILE_SIZE - gs.PLAYER_HIT_H) // 2
+        state.update(dt, 0, 0, False, True)  # E = paņemt sūtījumu
     # Spēlētājs staigā pa apli: pa labi, lejup, pa kreisi, augšup,
     # un pa diagonāli (diagonālā kustība reiz nokrasoja spēli — KeyError!)
     direction = (frame // 60) % 5
@@ -31,6 +39,9 @@ for frame in range(3600):
     state.update(dt, mx, my, frame % 90 == 0, frame % 120 == 0)
     # Ja līmenis izpildīts (vai uzvara), simulācija uzreiz turpina tālāk
     if state.status == "level_complete":
+        # Uzzīmējam LEVEL COMPLETE ekrānu (ar vērtējumu), lai pārbaudītu,
+        # ka tas nekritīs reālā spēlē
+        draw_level_complete(surface, fonts, state, {"selection": 0})
         state.next_level()
     elif state.status in ("game_over", "won"):
         state.__init__()

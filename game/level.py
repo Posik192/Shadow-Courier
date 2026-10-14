@@ -10,6 +10,8 @@ Karte ir saraksts ar teksta rindām. Katrs simbols nozīmē vienu lauciņu:
     E - izeja (līmeņa beigas)
     L - lampa (apgaismo laukumu ap sevi)
     x - kaste vai muca (dekoratīvs šķērslis, caur nevar iet)
+    M - slepenais sūtījums (misijas objekts; bez tā izeja nedarbojas)
+    H - slēptuve (metāla skapītis; ar E var paslēpties, flīze paliek brīva)
     G - sargs, kas kustas horizontāli
     V - sargs, kas kustas vertikāli
 """
@@ -33,14 +35,14 @@ LEVEL_MAPS = [
         "#.......#......#.......#",
         "####.######.####.......#",
         "#....L......L..........#",
-        "#..xx....xx............#",
+        "#..xxH...xx............#",
         "#..xx....xx....L..V.C..#",
         "#..............#.xxx...#",
-        "#C.....G.......#.L.....#",
+        "#CH....G.......#.L.....#",
         "###.########.########D##",
         "#.......#.....xx...#...#",
         "#..K....#.....xx...#.E.#",
-        "#.......#.......C..#...#",
+        "#......M#.......C..#...#",
         "########################",
     ],
     # 2. līmenis — vidējs: vairākas telpas, garas patruļu līnijas,
@@ -51,18 +53,18 @@ LEVEL_MAPS = [
         "########################",
         "#P....#...C...#....K...#",
         "#.....#.V.....#..xx....#",
-        "#.........xx..#..xx....#",
+        "#H........xx..#..xx....#",
         "#L........xx..#.......C#",
         "#.....#L........L......#",
         "#C....#.......####..####",
         "#.....#................#",
         "#..xx....xx.....xx...V.#",
-        "#..xx....xx..C..xx.....#",
+        "#..xxH...xx..C..xx.....#",
         "#.....G........L.......#",
         "##D##.############.#####",
-        "#...#.........xx.......#",
+        "#...#.........xxH......#",
         "#.E.#.........xx....C..#",
-        "#...#..................#",
+        "#...#................M.#",
         "########################",
     ],
     # 3. līmenis — grūts: blīva noliktava ar daudzām kastu grupām,
@@ -82,8 +84,8 @@ LEVEL_MAPS = [
         "#C......xx..........V..#",
         "###.##############.#####",
         "#......C..#........#...#",
-        "#...xx....#..xx....#...#",
-        "#.K.xx....#..xx....D.E.#",
+        "#M.Hxx....#..xx....#H..#",
+        "#.K.xx...H#..xx....D.E.#",
         "#....G....#......C.#...#",
         "########################",
     ],
@@ -109,6 +111,9 @@ class Level:
         self.door_pos: tuple[int, int] | None = None
         self.door_open = False
         self.exit_pos: tuple[int, int] = (0, 0)
+        self.package_pos: tuple[int, int] | None = None  # sūtījuma flīze (simbols M)
+        self.package_taken = False   # vai sūtījums jau paņemts
+        self.hideouts: set[tuple[int, int]] = set()  # slēptuves (simbols H, flīze paliek brīva)
         self.player_start: tuple[int, int] = (0, 0)  # pikseļos (kreisais augšējais stūris)
 
         guard_speed = GUARD_SPEEDS[level_number - 1]
@@ -130,6 +135,12 @@ class Level:
                     self.exit_pos = pos
                 elif symbol == "L":
                     self.lamps[pos] = 0.0  # 0.0 nozīmē: lampa deg
+                elif symbol == "M":
+                    self.package_pos = pos
+                elif symbol == "H":
+                    # Slēptuve NAV cieta flīze — uz tās var uzkāpt,
+                    # interakcija notiek ar tuvuma rādiusu (skat. game_state)
+                    self.hideouts.add(pos)
                 elif symbol == "P":
                     # Sākuma vieta ir hitboxa augšējais kreisais stūris:
                     # centrēts horizontāli, tuvu lauciņa apakšai ("kājas")

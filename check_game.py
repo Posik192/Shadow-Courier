@@ -129,7 +129,8 @@ for gd in g.level.guards:
 assert g.lives == s.START_LIVES, "lampas gaisma vairs nedrīkst noņemt dzīvību!"
 print("LAMP_ALERT: OK (trauksme pēc 0.8 s gaismā, dzīvības netiek noņemtas)")
 
-# 5b. Ja spēlētājs iziet no gaismas pirms 0.8 s — nekādas trauksmes
+# 5b. Ja spēlētājs iziet no gaismas pirms 0.8 s — nekādas trauksmes.
+# EXPOSURE josla nepazūd uzreiz, bet lēnām krīt līdz 0 (EXPOSURE_DECAY_TIME).
 g = GameState()
 place_on_tile(g, 12, 6)
 for _ in range(30):  # 0.5 s gaismā — mazāk par LAMP_DETECT_TIME
@@ -137,12 +138,23 @@ for _ in range(30):  # 0.5 s gaismā — mazāk par LAMP_DETECT_TIME
 assert all(gd.state == STATE_PATROL for gd in g.level.guards), \
     "trauksme iestājās pārāk agri"
 assert g.lamp_detect_timer > 0 and g.lamp_exposure > 0
+peak_exposure = g.lamp_exposure
+# Sargus aiznesam un "piespraustējam" tālu prom (pause_timer), lai nejauša
+# patruļa testa laikā neieraudzītu spēlētāju un nejauktu mērījumus
+for gd in g.level.guards:
+    gd.x, gd.y = tile_hitbox_corner(1, 13)
+    gd.pause_timer = 999.0
+    gd.facing = (0.0, 1.0)
 place_on_tile(g, 1, 1)  # ārā no gaismas
 g.update(1 / 60, 0, 0, False, False)
-assert g.lamp_detect_timer == 0.0 and g.lamp_exposure == 0.0, \
-    "lampas taimerim jāatiestatās, izējot no gaismas"
+assert g.lamp_detect_timer == 0.0, "trauksmes taimerim jāatiestatās uzreiz"
+assert 0.0 < g.lamp_exposure < peak_exposure, \
+    "EXPOSURE joslai jākrīt pakāpeniski, nevis jāpazūd uzreiz"
+for _ in range(int(s.EXPOSURE_DECAY_TIME * 60) + 5):
+    g.update(1 / 60, 0, 0, False, False)
+assert g.lamp_exposure == 0.0, "EXPOSURE joslai jānokrīt līdz 0 par ~1.0 s"
 assert g.alert_count == 0
-print("Lampas taimera atiestate: OK (iziešana pirms 0.8 s — bez trauksmes)")
+print("Lampas taimera atiestate: OK (iziešana pirms 0.8 s — bez trauksmes, exposure krīt lēnām)")
 
 # 5c. Izslēgta lampa nerada trauksmi (sargus aiznesam projām, lai lukturi nejauktu)
 g = GameState()
@@ -183,14 +195,20 @@ assert g.level.door_open, "durvis neatvērās ar atslēgu"
 print("Atslēga un durvis: OK (+25)")
 
 # 7. Izeja -> "līmenis izpildīts" ar bonusu, tad next_level() -> līmenis 2
+# (no 3. fāzes izeja strādā tikai ar paņemtu sūtījumu — vispirms paņemam to)
 from game.game_state import STATUS_LEVEL_COMPLETE
 g = GameState()
+place_on_tile(g, *g.level.package_pos)
+g.update(0.01, 0, 0, False, True)
+assert g.level.package_taken, "tests: sūtījumam vajadzēja paņemties"
 place_on_tile(g, *g.level.exit_pos)
 g.update(0.01, 0, 0, False, False)
 assert g.status == STATUS_LEVEL_COMPLETE and g.score >= s.LEVEL_BONUS
 assert g.level_stats["coins_total"] > 0, "level_stats nesaglabāja statistiku"
+assert g.level_stats["rank"] in ("S", "A", "B", "C"), "level_stats bez ranga"
 g.next_level()
 assert g.level_number == 2 and g.status == STATUS_PLAYING
+assert g.alert_count == 0, "alert_count jāatiestatās load_level laikā"
 print(f"Izeja: OK (līmenis izpildīts -> līmenis 2, punkti: {g.score})")
 
 # 8. Noķeršana: hitboxu pārklāšanās -> uzreiz game_over (dzīvības netiek noņemtas)
@@ -361,5 +379,181 @@ assert gd.state == STATE_SEARCH, \
     f"pazudušais spēlētājs neizsauca SEARCH: {gd.state}"
 assert gd.search_timer > 0, "SEARCH taimerim jābūt iestatītam"
 print("CHASE -> SEARCH: OK (spēlētājs pazūd — sargs meklē pēdējā redzētajā vietā)")
+
+# =====================================================================
+#  3. FĀZES TESTI: sūtījums (M), EXPOSURE josla, slēptuves (H), rangi
+# =====================================================================
+
+# 14. Sūtījums (M) katrā līmenī: sasniedzams, brīva flīze, prom no starta/izejas
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    flat = "".join(rows)
+    assert flat.count("M") == 1, f"Līmenis {i}: jābūt vienam M"
+    lvl = Level(rows, i)
+    assert lvl.package_pos is not None and not lvl.package_taken
+    mc, mr = lvl.package_pos
+    assert not lvl.is_solid_tile(mc, mr), f"Līmenis {i}: M ir uz cietas flīzes"
+    start_tile = lvl.tile_at_pixel(*lvl.player_start)
+    assert abs(mc - start_tile[0]) + abs(mr - start_tile[1]) >= 5, \
+        f"Līmenis {i}: M pārāk tuvu startam"
+    assert abs(mc - lvl.exit_pos[0]) + abs(mr - lvl.exit_pos[1]) >= 5, \
+        f"Līmenis {i}: M pārāk tuvu izejai"
+    # Sasniedzamība ar BFS no starta (durvju šķērsošana nav vajadzīga pārbaudei,
+    # tāpēc durvis pagaidām uzskatām par atvērtām)
+    lvl.door_open = True
+    path = find_path(lvl.is_solid_tile, start_tile, lvl.package_pos)
+    assert path is not None, f"Līmenis {i}: M nav sasniedzams ar BFS"
+print("Sūtījuma novietojums: OK (viena M katrā līmenī, sasniedzama, prom no starta/izejas)")
+
+# 14b. Sūtījuma paņemšana ar tuvuma laukumu; bez tā izeja nedarbojas
+g = GameState()
+place_on_tile(g, *g.level.package_pos)
+assert g.package_in_range(), "stāvot uz M flīzes sūtījumam jābūt rokas stiepienā"
+g.update(0.01, 0, 0, False, True)
+assert g.level.package_taken, "E netālu no sūtījuma to nepaņēma"
+# Pārāk tālu — nepaņem
+g = GameState()
+place_on_tile(g, *g.level.exit_pos)  # tālu no M (vismaz 5 flīzes)
+assert not g.package_in_range()
+g.update(0.01, 0, 0, False, True)
+assert not g.level.package_taken, "sūtījums paņēmās no pārāk liela attāluma"
+# Bez sūtījuma izeja līmeni NEPABEIDZ
+assert g.status == STATUS_PLAYING, "izeja bez sūtījuma nedrīkst pabeigt līmeni"
+assert g.message == "MISSION ITEM REQUIRED", "pie izejas jāparādas MISSION ITEM REQUIRED"
+# Ar sūtījumu izeja pabeidz līmeni
+place_on_tile(g, *g.level.package_pos)
+g.update(0.01, 0, 0, False, True)
+assert g.level.package_taken
+place_on_tile(g, *g.level.exit_pos)
+g.update(0.01, 0, 0, False, False)
+assert g.status == STATUS_LEVEL_COMPLETE, "izeja ar sūtījumu nepabeidza līmeni"
+print("Sūtījuma paņemšana un izejas nosacījums: OK")
+
+# 14c. Misijas teksts līmeņa sākumā (~2 s) un notiekšana līdz 0
+g = GameState()
+for gd in g.level.guards:
+    gd.pause_timer = 999.0  # sargi stāv uz vietas — lai nejauša redze netraucētu
+assert g.mission_text_timer == s.MISSION_TEXT_TIME
+assert len(s.MISSION_TEXTS) >= len(LEVEL_MAPS), "trūkst misijas tekstu"
+for _ in range(int(s.MISSION_TEXT_TIME * 60) + 5):
+    g.update(1 / 60, 0, 0, False, False)
+assert g.mission_text_timer == 0.0, "misijas teksta taimeris nenonāca līdz 0"
+print("Misijas teksts: OK (dt-balstīts taimeris ~2 s)")
+
+# 15. EXPOSURE: gaismā aug līdz ~1.0 par 0.8 s; ārpus krīt; izslēgta lampa neaug
+g = GameState()
+place_on_tile(g, 12, 6)  # degoša lampa, tālu no sargu startiem
+for _ in range(46):  # ~0.77 s gaismā (alarm vēl nav — tas pie 0.8 s)
+    g.update(1 / 60, 0, 0, False, False)
+assert 0.9 <= g.lamp_exposure <= 1.0, \
+    f"exposure par lēnu/ātru gaismā: {g.lamp_exposure:.2f}"
+# Kurjera siltā gaisma (vizuāla) un stāvēšana tumsā exposure neaug
+g2 = GameState()
+place_on_tile(g2, 1, 1)  # tumsā, nevienas lampas zonā
+for _ in range(120):
+    g2.update(1 / 60, 0, 0, False, False)
+assert g2.lamp_exposure == 0.0 and g2.alert_count == 0, \
+    "tumsā (kurjera siltajā gaismā) exposure nedrīkst augt"
+# Izslēgta lampa exposure neaug (sargus aiznesam projām, lai lukturi nejauktu)
+g3 = GameState()
+g3.level.lamps[(12, 6)] = 5.0
+for gd in g3.level.guards:
+    gd.x, gd.y = tile_hitbox_corner(1, 13)
+    gd.pause_timer = 999.0
+    gd.facing = (0.0, 1.0)
+place_on_tile(g3, 12, 6)
+for _ in range(120):
+    g3.update(1 / 60, 0, 0, False, False)
+assert g3.lamp_exposure == 0.0, "izslēgta lampa paaugstināja exposure!"
+print("EXPOSURE josla: OK (aug gaismā, krīt ārpus, izslēgta lampa/tumsa neaug)")
+
+# 16. Slēptuves (H): vismaz 2 katrā līmenī, pie sienas/kastes, brīva, sasniedzama
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    lvl = Level(rows, i)
+    assert len(lvl.hideouts) >= 2, f"Līmenis {i}: slēptuvju < 2"
+    lvl.door_open = True  # lai BFS nebaidās no durvīm
+    start_tile = lvl.tile_at_pixel(*lvl.player_start)
+    for (c, r) in lvl.hideouts:
+        assert not lvl.is_solid_tile(c, r), \
+            f"Līmenis {i}: slēptuve ({c},{r}) ir cieta flīze!"
+        neighbours = (rows[r - 1][c], rows[r + 1][c], rows[r][c - 1], rows[r][c + 1])
+        assert "#" in neighbours or "x" in neighbours, \
+            f"Līmenis {i}: slēptuve ({c},{r}) nav pie sienas vai kastes"
+        path = find_path(lvl.is_solid_tile, start_tile, (c, r))
+        assert path is not None, f"Līmenis {i}: slēptuve ({c},{r}) nav sasniedzama"
+print("Slēptuvju novietojums: OK (>= 2 katrā līmenī, pie šķēršļiem, brīvas, sasniedzamas)")
+
+# 16b. Paslēpšanās: kustība ignorēta, sargi neredz, lampas trauksme nenotiek
+g = GameState()
+hideout = sorted(g.level.hideouts)[0]
+place_on_tile(g, *hideout)
+g.update(0.01, 0, 0, False, True)  # E pie slēptuves
+assert g.hidden, "E pie slēptuves nepaslēpa kurjeru"
+# Kustība ignorēta, kamēr paslēpies
+hx, hy = g.player_x, g.player_y
+for _ in range(10):
+    g.update(0.1, 1, 1, True, False)  # kustība + Space — viss ignorējas
+assert (g.player_x, g.player_y) == (hx, hy), "paslēpies spēlētājs pārvietojās!"
+# Luktura konuss neredz paslēpušos
+gd = g.level.guards[0]
+assert gd._can_see_player(g.level, None) is False, \
+    "sargs 'ieraudzīja' paslēpušos spēlētāju"
+# Paslēpies degošas lampas gaismā — exposure neaug, trauksme nenotiek,
+# pat ja sargs fiziski pieskaras (hidden = drošs; skat. game_state komentāru)
+lamp = next(iter(g.level.lamps))
+place_on_tile(g, *lamp)
+assert g.hidden, "teleports nedrīkst izmest no slēptuves"
+gd.x, gd.y = g.player_x, g.player_y  # sargs stāv uz tās pašas vietas
+for _ in range(180):  # 3 s gaismā ar sargu virsū
+    g.update(1 / 60, 0, 0, False, False)
+assert g.alert_count == 0 and g.lamp_exposure == 0.0, \
+    "paslēpies spēlētājs izsauca lampas trauksmi!"
+assert g.status == STATUS_PLAYING, "paslēpies spēlētājs tika noķerts!"
+assert all(guard.state == STATE_PATROL for guard in g.level.guards), \
+    "sargs pamanīja paslēpušos spēlētāju"
+# Iziešana no slēptuves atjauno normālu stāvokli
+g.update(0.01, 0, 0, False, True)
+assert not g.hidden, "atkārtots E neizlaida no slēptuves"
+g.update(0.1, 1, 0, False, False)
+assert g.player_x != hx or g.player_y != hy, \
+    "pēc iziešanas no slēptuves kustība vairs nestrādā"
+print("Paslēpšanās: OK (kustība ignorēta, sargi neredz, trauksme/noķeršana nenotiek)")
+
+# 17. Vērtējumi: calculate_rank robežgadījumi
+from game.rank import calculate_rank, better_rank
+# S: visas monētas, 0 trauksmes, laiks robežās
+assert calculate_rank(5, 5, 0, 50, 1) == "S"
+assert calculate_rank(5, 5, 0, s.RANK_S_TIME[0], 1) == "S"  # tieši uz robežas
+# Trūkst viena monēta vai viena trauksme -> A
+assert calculate_rank(4, 5, 0, 50, 1) == "A"
+assert calculate_rank(5, 5, 1, 50, 1) == "A"
+assert calculate_rank(5, 5, 0, 70, 1) == "A"  # pārsniegts S laiks
+# Vairākas kļūdas -> B
+assert calculate_rank(3, 5, 2, 100, 1) == "B"
+# Daudz trauksmju vai ļoti lēns -> C
+assert calculate_rank(5, 5, 3, 50, 1) == "C"
+assert calculate_rank(5, 5, 0, 130, 1) == "C"
+assert calculate_rank(0, 5, 9, 500, 2) == "C"
+# Rangu salīdzināšana
+assert better_rank("A", "S") == "S" and better_rank("C", "B") == "B"
+# Rangs saglabājas level_stats pie līmeņa pabeigšanas
+g = GameState()
+place_on_tile(g, *g.level.package_pos)
+g.update(0.01, 0, 0, False, True)
+place_on_tile(g, *g.level.exit_pos)
+g.update(0.01, 0, 0, False, False)
+assert g.level_stats["rank"] in ("S", "A", "B", "C")
+assert g.level_stats["alerts"] == 0
+print("Vērtējumi: OK (S/A/B/C robežgadījumi + level_stats)")
+
+# 18. alert_count skaita vienu reizi uz notikumu un resetojas load_level
+g = GameState()
+place_on_tile(g, 12, 6)
+for _ in range(int(s.LAMP_DETECT_TIME * 60) + 10):
+    g.update(1 / 60, 0, 0, False, False)
+assert g.alert_count == 1, \
+    f"viena gaismas epizode = viena trauksme, ne {g.alert_count}"
+g.load_level(1)
+assert g.alert_count == 0, "load_level neatiestatīja alert_count"
+print("alert_count: OK (viens skaitlis uz trauksmi, resetojas load_level)")
 
 print("\nVISI TESTI IZJAUTI ✅")
