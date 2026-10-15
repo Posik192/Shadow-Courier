@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Courier — {% block title %}Līderu tabula{% endblock %}</title>
+    <!-- Favicon: pasta sūtījuma emodži kā SVG -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+    <!-- Fonti no Google Fonts: Space Grotesk (virsraksti) + JetBrains Mono (skaitļi) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Animētais gaismas fons (CSS klase .gaisma-fons) -->
+    <div class="gaisma-fons"></div>
+
+    <nav>
+        <a class="logo" href="/">SHADOW<span>COURIER</span></a>
+        <div class="saites">
+            <a href="/" class="{{ 'aktiva' if active == 'leaderboard' }}">LEADERBOARD</a>
+            <a href="/rules" class="{{ 'aktiva' if active == 'rules' }}">RULES</a>
+        </div>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

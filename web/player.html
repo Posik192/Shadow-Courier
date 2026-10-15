@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ player.name }}{% endblock %}
+{% block content %}
+        <header class="hero">
+            <h1><span class="akcents">{{ player.name }}</span></h1>
+            <p>Spēlētāja profils</p>
+        </header>
+
+        <!-- Kopsavilkuma kartes: spēļu skaits un labākais rezultāts -->
+        <div class="kartes">
+            <div class="karte">
+                <h3>Spēles</h3>
+                <p class="profila-skaitlis">{{ player.games }}</p>
+            </div>
+            <div class="karte">
+                <h3>Labākais rezultāts</h3>
+                <p class="profila-skaitlis">{{ player.best_score }}</p>
+            </div>
+        </div>
+
+        <!-- Pēdējie rezultāti (jaunākie pirmie) -->
+        <section class="taustini">
+            <h2>Pēdējie <span class="svars">rezultāti</span></h2>
+            <div class="tabula-kaste">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Punkti</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for score in player.recent_scores %}
+                        <tr>
+                            <td><span class="vieta">{{ loop.index }}</span></td>
+                            <td class="punkti">{{ score }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="tukss">No scores yet — play the game!</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div style="text-align: center;">
+            <a class="poga" href="/">← Atpakaļ uz līderu tabulu</a>
+        </div>
+{% endblock %}

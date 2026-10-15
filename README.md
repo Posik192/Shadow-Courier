@@ -48,4 +48,17 @@ python check_api.py     # servera testi (serverim jāstrādā)
 | GET | /scores/top | 10 labākie rekordi | 200 |
 | GET | /players/{name}/stats | Spēļu skaits un labākais rezultāts | 200 / 404 |
 
+## Mājaslapas (Jinja)
+
+| Adrese | Kas tur ir |
+|--------|------------|
+| / | Līderu tabula (top 10 no datubāzes) |
+| /players/{name} | Spēlētāja profils (spēļu skaits, labākais, pēdējie rezultāti) |
+| /rules | Spēles noteikumi |
+| /static/style.css | Lapu stili |
+
+Spēle beigās (CAUGHT vai uzvara) pati aizsūta rekordu serverim —
+vārdu spēle pajautā ar `input()` pirms loga atvēršanas.
+Ja serveris ir izslēgts, spēle turpina normāli, tikai rekords netiek saglabāts.
+
 Rekordi un spēlētāji glabājas SQLite failā `game.db` (netiek iekļauts Git).

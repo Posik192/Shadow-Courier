@@ -11,21 +11,34 @@ Galvenie endpointi:
     POST /scores                saglabā rekordu (201, prasa token galveni)
     GET  /scores/top            10 labākie rekordi (200)
     GET  /players/{name}/stats  spēlētāja statistika (200, vai 404)
+
+Mājaslapas (Jinja2 veidnes no web/ mapes):
+    GET  /                      līderu tabula (top 10, no tās pašas datubāzes)
+    GET  /players/{name}        spēlētāja profils (404, ja nav)
+    GET  /rules                 spēles noteikumi
+    /static/...                 statiskie faili (style.css u.c.)
 """
 
 import hashlib
 import secrets
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from api.db import get_connection
+from api.db import get_connection, get_top_scores, get_player_page
 
 # --- Ierobežojumi ievaddatiem (lielāki skaitļi vai garāki vārdi nedrīkst) ---
 MAX_NAME_LEN = 20
 MAX_PASSWORD_LEN = 50
 
 app = FastAPI(title="Shadow Courier API")
+
+# Statiskie faili (style.css u.c.) un Jinja veidnes — abas no web/ mapes
+app.mount("/static", StaticFiles(directory="web"), name="static")
+templates = Jinja2Templates(directory="web")
 
 
 class UserIn(BaseModel):
@@ -104,11 +117,7 @@ def add_score(item: ScoreIn, token: str = Header()) -> dict:
 @app.get("/scores/top")
 def top_scores() -> list[dict]:
     """Atgriež 10 labākos rekordus (lielākie pirmie)."""
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT player, score FROM scores "
-            "ORDER BY score DESC LIMIT 10").fetchall()
-    return [{"player": p, "score": s} for p, s in rows]
+    return get_top_scores(10)
 
 
 @app.get("/players/{name}/stats")
@@ -123,3 +132,30 @@ def player_stats(name: str) -> dict:
             "SELECT COUNT(*), MAX(score) FROM scores WHERE player = ?",
             (name,)).fetchone()
     return {"name": name, "games": row[0], "best_score": row[1] or 0}
+
+
+# --- Mājaslapas (Jinja2 veidnes) ---
+# Šie maršruti ir PĒC API maršrutiem, lai /players/{name}/stats
+# netiktu uztverts kā profila lapa ar vārdu "{name}/stats".
+
+@app.get("/", response_class=HTMLResponse)
+def leaderboard_page(request: Request) -> HTMLResponse:
+    """Līderu tabula pārlūkā — tie paši dati, ko atdod /scores/top."""
+    return templates.TemplateResponse(
+        request, "leaderboard.html", {"scores": get_top_scores(10)})
+
+
+@app.get("/rules", response_class=HTMLResponse)
+def rules_page(request: Request) -> HTMLResponse:
+    """Spēles noteikumi pārlūkā."""
+    return templates.TemplateResponse(request, "rules.html")
+
+
+@app.get("/players/{name}", response_class=HTMLResponse)
+def player_page(request: Request, name: str) -> HTMLResponse:
+    """Spēlētāja profils pārlūkā. Ja spēlētāja nav — 404 ar vienkāršu ziņu."""
+    player = get_player_page(name)
+    if player is None:
+        raise HTTPException(404, "Spēlētājs nav atrasts")
+    return templates.TemplateResponse(
+        request, "player.html", {"player": player})

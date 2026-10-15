@@ -74,6 +74,24 @@ def main() -> None:
     r = requests.get(f"{BASE}/players/nebuna/stats", timeout=5)
     parbaudiet("stats nezināms -> 404", r.status_code == 404)
 
+    # --- Mājaslapas (Jinja) ---
+    # Līderu tabula: 200 un satur tabulu ar mūsu testa rekordu
+    r = requests.get(f"{BASE}/", timeout=5)
+    parbaudiet("GET / atbild 200", r.status_code == 200)
+    parbaudiet("GET / satur tabulu", "<table" in r.text)
+    parbaudiet("GET / satur testa spēlētāju", "testotajs" in r.text)
+
+    # Spēlētāja profils: eksistējošs -> 200 ar vārdu, neeksistējošs -> 404
+    r = requests.get(f"{BASE}/players/testotajs", timeout=5)
+    parbaudiet("profils 200 un satur vārdu",
+               r.status_code == 200 and "testotajs" in r.text)
+    r = requests.get(f"{BASE}/players/nebuna", timeout=5)
+    parbaudiet("profils nezināms -> 404", r.status_code == 404)
+
+    # Statiskie faili (style.css) tiek servēti no /static/
+    r = requests.get(f"{BASE}/static/style.css", timeout=5)
+    parbaudiet("/static/style.css atbild 200", r.status_code == 200)
+
     print("\nVISI SERVERA TESTI IZJAUTI ✅")
 
 

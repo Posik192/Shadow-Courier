@@ -20,6 +20,11 @@ from game.game_state import (GameState, STATUS_PLAYING, STATUS_GAME_OVER,
 from game.level import LEVEL_MAPS
 from game.rank import better_rank
 
+# Servera klients rekordu sūtīšanai (spēles beigās).
+# Tiek importēts tikai šeit — sim_play.py un citi skripti to nelieto,
+# tāpēc simulācijas nekad nesūta neko uz serveri.
+import api_client
+
 # --- LOGA UZSTĀDĪJUMI ---
 FPS = 60           # kadri sekundē
 HUD_HEIGHT = 112   # apakšējā HUD josla (pikseļi); karte zīmējas virs tās
@@ -1279,8 +1284,9 @@ def draw_game_over(window: pygame.Surface, fonts: dict,
     window.blit(reason_img, reason_img.get_rect(center=(cx, rect.top + 120)))
     score = fonts["font"].render(f"SCORE  {state.score}", True, UI_DIM)
     window.blit(score, score.get_rect(center=(cx, rect.top + 160)))
+    draw_score_status(window, fonts, ui, cx, rect.top + 190)
     draw_menu_options(window, fonts["font"], CAUGHT_OPTIONS, ui["selection"],
-                      cx, rect.top + 215, line_height=44)
+                      cx, rect.top + 225, line_height=44)
 
 
 def draw_won(window: pygame.Surface, fonts: dict, state: GameState,
@@ -1291,8 +1297,31 @@ def draw_won(window: pygame.Surface, fonts: dict, state: GameState,
     draw_panel_title(window, fonts, rect, "ALL MISSIONS COMPLETE")
     score = fonts["font"].render(f"FINAL SCORE  {state.score}", True, UI_TEXT)
     window.blit(score, score.get_rect(center=(cx, rect.top + 130)))
+    draw_score_status(window, fonts, ui, cx, rect.top + 160)
     draw_menu_options(window, fonts["font"], WON_OPTIONS, ui["selection"],
-                      cx, rect.top + 195, line_height=44)
+                      cx, rect.top + 205, line_height=44)
+
+
+# Zaļā krāsā, ja rekords aizgāja uz serveri; pelēkā, ja nē
+SCORE_SAVED_COLOR = (90, 200, 120)
+
+
+def draw_score_status(window: pygame.Surface, fonts: dict, ui: dict,
+                      cx: int, y: int) -> None:
+    """Rāda vienu rindu par rekorda nosūtīšanu serverim (CAUGHT/WIN ekrāni).
+
+    Rāda tikai tad, kad sūtīšana jau notikusi (ui["score_result"]):
+    True -> "SCORE SAVED TO SERVER" (zaļa), False -> "SERVER NOT AVAILABLE".
+    """
+    result = ui.get("score_result")
+    if result is None:
+        return
+    if result:
+        text, color = "SCORE SAVED TO SERVER", SCORE_SAVED_COLOR
+    else:
+        text, color = "SERVER NOT AVAILABLE", UI_DIM
+    img = fonts["small"].render(text, True, color)
+    window.blit(img, img.get_rect(center=(cx, y)))
 
 
 # ============================================================
@@ -1325,6 +1354,7 @@ def handle_key(key: int, current_screen: str, state: GameState,
                 return SCREEN_GAME
             if option == "NEW GAME":
                 state.__init__()   # jauna spēle no 1. līmeņa
+                reset_score_flag(ui)  # jaunā spēle beigās sūtīs jaunu rekordu
                 ui["game_started"] = True
                 return SCREEN_GAME
             if option == "LEVEL SELECT":
@@ -1448,6 +1478,7 @@ def handle_key(key: int, current_screen: str, state: GameState,
                 state.lives = START_LIVES
                 state.load_level(state.level_number)
                 state.status = STATUS_PLAYING
+                reset_score_flag(ui)  # nākamā spēle beigās sūtīs jaunu rekordu
                 ui["game_started"] = True
                 ui["selection"] = 0
                 return SCREEN_GAME
@@ -1465,6 +1496,7 @@ def handle_key(key: int, current_screen: str, state: GameState,
         elif key == pygame.K_RETURN:
             if WON_OPTIONS[sel] == "PLAY AGAIN":
                 state.__init__()
+                reset_score_flag(ui)  # nākamā spēle beigās sūtīs jaunu rekordu
                 ui["game_started"] = True
                 ui["selection"] = 0
                 return SCREEN_GAME
@@ -1489,8 +1521,50 @@ def remember_rank(ui: dict, state: GameState) -> None:
         ui["best_ranks"][state.level_number] = better_rank(previous, rank)
 
 
+def ask_player_name() -> str:
+    """Pajautā spēlētāja vārdu konsolē PIRMS pygame.init().
+
+    Tas ir apzināti vienkārši (prakses slaidu pieeja): spēle sākas
+    no termināļa, tāpēc vārdu prasām turpat ar input(). Tukša ievade
+    nozīmē "PLAYER". Headless režīmā (SDL_VIDEODRIVER=dummy, testi)
+    nejautājam neko — tur neviens nevar atbildēt.
+    """
+    if os.environ.get("SDL_VIDEODRIVER") == "dummy":
+        return "PLAYER"
+    try:
+        name = input("Tavs vārds: ").strip()
+    except EOFError:
+        name = ""  # nav konsoles (piem., palaists no citas programmas)
+    return name or "PLAYER"
+
+
+def reset_score_flag(ui: dict) -> None:
+    """Atiestata rekorda sūtīšanas karodziņu — nākamā spēle sūtīs no jauna."""
+    ui["score_sent"] = False
+    ui["score_result"] = None
+
+
+def send_score_to_server(ui: dict, state: GameState, player_name: str) -> None:
+    """Nosūta rekordu serverim VIENU REIZI, kad spēle beigusies.
+
+    Login un sūtīšana notiek šeit (spēles beigās), nevis spēles sākumā —
+    tāpēc spēle nesasalst palaišanas brīdī, ja serveris ir izslēgts
+    (timeout=3 s uz vienu pieprasījumu ir pieņemama pauze beigu ekrānā).
+    api_client pats noķer visas kļūdas — spēle nekad nenokrīt servera dēļ.
+    """
+    if ui["score_sent"]:
+        return
+    ui["score_sent"] = True  # lai nesūta atkārtoti katrā kadrā
+    token = api_client.login_or_register(player_name)
+    ui["score_result"] = token is not None and \
+        api_client.send_score(token, state.score)
+
+
 def main() -> None:
     """Spēles galvenā funkcija: atver logu un griež spēles ciklu."""
+    # Vārdu jautājam PIRMS pygame.init() — konsolē, kamēr logs vēl nav atvērts
+    player_name = ask_player_name()
+
     pygame.init()
     pygame.display.set_caption("Shadow Courier")
 
@@ -1517,6 +1591,8 @@ def main() -> None:
         "game_started": False,     # vai šajā sesijā spēle jau sākta (CONTINUE)
         "completed_levels": set(), # šajā sesijā pabeigtie līmeņi (1, 2, 3)
         "best_ranks": {},          # labākais vērtējuma burts katram līmenim
+        "score_sent": False,       # vai šīs spēles rekords jau nosūtīts serverim
+        "score_result": None,      # True = saglabāts, False = serveris nepieejams
     }
 
     current_screen = SCREEN_MENU
@@ -1553,11 +1629,13 @@ def main() -> None:
             # Space un E apstrādājam handle_key, lai viens nospiešanas = viena darbība
             state.update(dt, move_x, move_y, False, False)
             if state.status == STATUS_GAME_OVER:
+                send_score_to_server(ui, state, player_name)
                 current_screen = SCREEN_GAME_OVER
                 ui["selection"] = 0
             elif state.status == STATUS_WON:
                 ui["completed_levels"].add(state.level_number)
                 remember_rank(ui, state)
+                send_score_to_server(ui, state, player_name)
                 current_screen = SCREEN_WON
                 ui["selection"] = 0
             elif state.status == STATUS_LEVEL_COMPLETE:

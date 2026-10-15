@@ -1,27 +1,7 @@
-<!DOCTYPE html>
-<html lang="lv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadow Courier — Noteikumi</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div class="gaisma-fons"></div>
-
-    <nav>
-        <a class="logo" href="leaderboard.html">SHADOW<span>COURIER</span></a>
-        <div class="saites">
-            <a href="leaderboard.html">TOP 10</a>
-            <a href="rules.html" class="aktiva">Noteikumi</a>
-        </div>
-    </nav>
-
-    <main>
+{% extends "base.html" %}
+{% block title %}Noteikumi{% endblock %}
+{% set active = "rules" %}
+{% block content %}
         <header class="hero">
             <h1>SPĒLES <span class="akcents">NOTEIKUMI</span></h1>
             <p>Tu esi slepens kurjers. Aiznes paketi līdz izejai — neviens nedrīkst tevi pamanīt.</p>
@@ -89,8 +69,6 @@
         </section>
 
         <div style="text-align: center;">
-            <a class="poga" href="leaderboard.html">Apskatīt līderu tabulu →</a>
+            <a class="poga" href="/">Apskatīt līderu tabulu →</a>
         </div>
-    </main>
-</body>
-</html>
+{% endblock %}

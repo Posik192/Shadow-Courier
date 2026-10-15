@@ -264,6 +264,31 @@ tr.first .vieta { color: var(--zelts); }
     color: var(--akcents);
 }
 
+/* Spēlētāja vārds tabulā kā saite uz profila lapu */
+.speletajs {
+    color: inherit;
+    text-decoration: none;
+}
+.speletajs:hover {
+    color: var(--akcents);
+    text-decoration: underline;
+}
+
+/* Tukša tabula (nav vēl neviena rekorda) */
+.tukss {
+    text-align: center;
+    color: var(--teksts-vajs);
+    font-style: italic;
+}
+
+/* Lielais skaitlis profila lapas kartēs (spēles, labākais rezultāts) */
+.profila-skaitlis {
+    font-family: var(--fonts-mono);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--akcents) !important;
+}
+
 /* --- Poga --- */
 .poga {
     display: inline-block;

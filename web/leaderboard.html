@@ -1,30 +1,7 @@
-<!DOCTYPE html>
-<html lang="lv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadow Courier — Līderu tabula</title>
-    <!-- Favicon: pasta sūtījuma emodži kā SVG -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-    <!-- Fonti no Google Fonts: Space Grotesk (virsraksti) + JetBrains Mono (skaitļi) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <!-- Animētais gaismas fons (CSS klase .gaisma-fons) -->
-    <div class="gaisma-fons"></div>
-
-    <nav>
-        <a class="logo" href="leaderboard.html">SHADOW<span>COURIER</span></a>
-        <div class="saites">
-            <a href="leaderboard.html" class="aktiva">TOP 10</a>
-            <a href="rules.html">Noteikumi</a>
-        </div>
-    </nav>
-
-    <main>
+{% extends "base.html" %}
+{% block title %}Līderu tabula{% endblock %}
+{% set active = "leaderboard" %}
+{% block content %}
         <header class="hero">
             <h1>LĪDERU <span class="akcents">TABULA</span></h1>
             <p>Labākie kurjeri, kas aiznesuši paketi cauri ēnām.</p>
@@ -36,45 +13,24 @@
                     <tr>
                         <th>#</th>
                         <th>Spēlētājs</th>
-                        <th>Līmenis</th>
                         <th>Punkti</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- 1. vietai klase "first" — zelta krāsa un mirdzums (skat. style.css) -->
-                    <tr class="first">
-                        <td><span class="vieta">1</span></td>
-                        <td>Anna</td>
-                        <td>3</td>
-                        <td class="punkti">900</td>
+                    <!-- Rekordi nāk no servera (top 10 no datubāzes).
+                         1. vietai klase "first" — zelta krāsa un mirdzums. -->
+                    {% for s in scores %}
+                    <tr class="{{ 'first' if loop.first }}">
+                        <td><span class="vieta">{{ loop.index }}</span></td>
+                        <td><a class="speletajs" href="/players/{{ s.player }}">{{ s.player }}</a></td>
+                        <td class="punkti">{{ s.score }}</td>
                     </tr>
+                    {% else %}
                     <tr>
-                        <td><span class="vieta">2</span></td>
-                        <td>Jānis</td>
-                        <td>3</td>
-                        <td class="punkti">720</td>
+                        <td colspan="3" class="tukss">No scores yet — play the game!</td>
                     </tr>
-                    <tr>
-                        <td><span class="vieta">3</span></td>
-                        <td>Roberts</td>
-                        <td>2</td>
-                        <td class="punkti">580</td>
-                    </tr>
-                    <tr>
-                        <td><span class="vieta">4</span></td>
-                        <td>Elīna</td>
-                        <td>2</td>
-                        <td class="punkti">450</td>
-                    </tr>
-                    <tr>
-                        <td><span class="vieta">5</span></td>
-                        <td>Mārtiņš</td>
-                        <td>1</td>
-                        <td class="punkti">320</td>
-                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
-    </main>
-</body>
-</html>
+{% endblock %}
