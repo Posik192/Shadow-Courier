@@ -14,10 +14,15 @@ nokrist, ja serveris ir izslēgts. Sliktākajā gadījumā rekords
 vienkārši netiek saglabāts.
 """
 
+import os
+
 import requests
 
 # --- SERVERA UZSTĀDĪJUMI ---
-SERVER = "http://localhost:8000"  # kur strādā uvicorn (api.main:app)
+# Kur strādā serveris. Pēc noklusējuma lokālais uvicorn (api.main:app).
+# Ja serveris ir izlikts internetā (Render), palaižot spēli iestati
+# vides mainīgo, piem.: $env:SHADOW_SERVER="https://tavs.onrender.com"
+SERVER = os.environ.get("SHADOW_SERVER", "http://localhost:8000")
 TIMEOUT = 3                       # sekundes — cik ilgi gaidām atbildi
 
 # Iespējamie atbilžu statusi (lai spēle var atšķirt kļūdu veidus):
