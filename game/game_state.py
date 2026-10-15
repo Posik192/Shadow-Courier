@@ -200,15 +200,14 @@ class GameState:
         self.message = "Sargi pamanīja tevi lampas gaismā!"
 
     def _player_in_light(self) -> bool:
-        """Vai spēlētāja centrs šobrīd atrodas kādas DEDZOŠAS lampas zonā."""
+        """Vai spēlētāja centrs šobrīd atrodas kādas DEDZOŠAS lampas zonā.
+
+        Zona ir sektors lampas gaismas virzienā (skat. Level.point_in_lamp_light)
+        — tā pati zona, ko zīmē klients, tāpēc redzamais un EXPOSURE sakrīt.
+        """
         px, py = self.player_center()
-        for (col, row), off_timer in self.level.lamps.items():
-            if off_timer > 0:
-                continue  # izslēgtā lampa neapdraud
-            lamp_x = col * s.TILE_SIZE + s.TILE_SIZE / 2
-            lamp_y = row * s.TILE_SIZE + s.TILE_SIZE / 2
-            distance = math.hypot(px - lamp_x, py - lamp_y)
-            if distance <= s.LIGHT_RADIUS:
+        for lamp_pos in self.level.lamps:
+            if self.level.point_in_lamp_light(lamp_pos, px, py):
                 return True
         return False
 

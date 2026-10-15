@@ -357,14 +357,24 @@ def get_glow_circle(radius: int, color: tuple = GLOW_COLOR,
     return _light_cache[key]
 
 
-def _cone_value(distance: float, angle: float, radius: int) -> float:
-    """Luktura konusa spilgtums punktā (konuss zīmēts rādot pa labi)."""
-    half = math.radians(GUARD_CONE_ANGLE)
+def _sector_value(distance: float, angle: float, radius: int,
+                  half_angle_deg: float) -> float:
+    """Gaismas sektora spilgtums punktā (sektors zīmēts rādot pa labi).
+
+    distance — attālums no gaismas avota, angle — leņķis no sektora
+    ass (0 = tieši gaismas virzienā), half_angle_deg — sektora puse leņķī.
+    """
+    half = math.radians(half_angle_deg)
     if distance >= radius or abs(angle) > half:
         return 0.0
     along = 1.0 - distance / radius      # mazāk gaismas tālāk
     side = 1.0 - abs(angle) / half       # mazāk gaismas pie malām
     return 255 * along * along * (0.35 + 0.65 * side)
+
+
+def _cone_value(distance: float, angle: float, radius: int) -> float:
+    """Luktura konusa spilgtums punktā (konuss zīmēts rādot pa labi)."""
+    return _sector_value(distance, angle, radius, GUARD_CONE_ANGLE)
 
 
 def get_light_cone(radius: int) -> pygame.Surface:
@@ -402,6 +412,38 @@ def get_rotated_cone(direction: tuple[float, float], colored: bool) -> pygame.Su
     return _light_cache[key]
 
 
+def get_lamp_sector(direction: tuple[int, int], colored: bool) -> pygame.Surface:
+    """Lampas gaismas sektors, pagriezts lampas gaismas virzienā (kešots).
+
+    Sektors ir 110° konus (LAMP_LIGHT_HALF_ANGLE * 2) ar LIGHT_RADIUS
+    rādiusu — tā pati zona, ko detekcijai lieto Level.point_in_lamp_light,
+    tāpēc redzamā gaisma un EXPOSURE zona sakrīt.
+    Lampas virzieni vienmēr ir 4 pamatvirzieni, tāpēc rotācijas leņķis
+    ir 0/90/180/270 un kešā ir tikai 4 varianti.
+    colored=False — alpha versija tumsas izgriešanai (SUB),
+    colored=True  — silti dzeltena versija mirdzumam (ADD).
+    """
+    dx, dy = direction
+    # Sektors zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
+    # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
+    angle = -math.degrees(math.atan2(dy, dx))
+    key = ("lamp_sector", angle, colored)
+    if key not in _light_cache:
+        if colored:
+            sector = _build_glow_pixels(
+                gs.LIGHT_RADIUS, GLOW_COLOR, GLOW_GAIN,
+                lambda d, a: _sector_value(d, a, gs.LIGHT_RADIUS,
+                                           gs.LAMP_LIGHT_HALF_ANGLE))
+        else:
+            sector = _build_radial_pixels(
+                gs.LIGHT_RADIUS,
+                lambda d, a: _sector_value(d, a, gs.LIGHT_RADIUS,
+                                           gs.LAMP_LIGHT_HALF_ANGLE))
+        _light_cache[key] = pygame.transform.rotate(sector, angle) \
+            if angle else sector
+    return _light_cache[key]
+
+
 def get_vignette(width: int, height: int) -> pygame.Surface:
     """Vinjette — tumšs gradients pa ekrāna malām (centrā caurspīdīgs)."""
     key = ("vignette", width, height)
@@ -435,13 +477,16 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
     darkness = pygame.Surface((world_w, world_h), pygame.SRCALPHA)
     darkness.fill((0, 0, 0, DARKNESS_ALPHA))
 
-    # 2. solis: katrai DEGLOŠAI lampai "izgriež" gaišu peli tumsā.
+    # 2. solis: katrai DEGLOŠAI lampai "izgriež" gaišu sektoru tumsā.
+    # Sektors sākas pie stiprinājuma sienas iekšējās malas (lamp_light_origin)
+    # un vērsts lampas gaismas virzienā — tā pati zona kā EXPOSURE detekcijai.
     # BLEND_RGBA_SUB atņem sprite alpha no tumsas alpha — tur paliek caurspīdīgi.
-    circle = get_light_circle(gs.LIGHT_RADIUS)
-    for (col, row), off_timer in state.level.lamps.items():
+    for lamp_pos, off_timer in state.level.lamps.items():
         if off_timer <= 0:
-            center = (col * t + t // 2, row * t + t // 2)
-            darkness.blit(circle, circle.get_rect(center=center),
+            direction = state.level.lamp_info[lamp_pos][1]
+            origin = state.level.lamp_light_origin(lamp_pos)
+            sector = get_lamp_sector(direction, colored=False)
+            darkness.blit(sector, sector.get_rect(center=origin),
                           special_flags=pygame.BLEND_RGBA_SUB)
 
     # 3. solis: sargu lukturu konusi (centri = hitboxa centrs)
@@ -458,15 +503,26 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
     darkness.blit(player_circle, player_circle.get_rect(center=player_center),
                   special_flags=pygame.BLEND_RGBA_SUB)
 
-    # 5. solis: uzklāj tumsu ar izgrieztajām gaismas vietām
+    # 5. solis: gaisma neiet caur cietām flīzēm — pēc visu izgriezumu
+    # cietās flīzes (sienas, kastes, aizvērtas durvis) aizkrāsojam atpakaļ
+    # ar tumsu. Tā lampas gaisma neaizplūst uz blakus istabu.
+    # (Atbilst detekcijas pusei: point_in_lamp_light redzeslīnijas pārbaudei.)
+    for row in range(state.level.height):
+        for col in range(state.level.width):
+            if state.level.is_solid_tile(col, row):
+                darkness.fill((0, 0, 0, DARKNESS_ALPHA),
+                              (col * t, row * t, t, t))
+
+    # 6. solis: uzklāj tumsu ar izgrieztajām gaismas vietām
     window.blit(darkness, (0, 0))
 
-    # 6. solis: silti mirdzumi gaismas vietās (aditīvi — gaišāk un siltāk)
-    glow = get_glow_circle(gs.LIGHT_RADIUS)
-    for (col, row), off_timer in state.level.lamps.items():
+    # 7. solis: silti mirdzumi gaismas vietās (aditīvi — gaišāk un siltāk)
+    for lamp_pos, off_timer in state.level.lamps.items():
         if off_timer <= 0:
-            center = (col * t + t // 2, row * t + t // 2)
-            window.blit(glow, glow.get_rect(center=center),
+            direction = state.level.lamp_info[lamp_pos][1]
+            origin = state.level.lamp_light_origin(lamp_pos)
+            sector_glow = get_lamp_sector(direction, colored=True)
+            window.blit(sector_glow, sector_glow.get_rect(center=origin),
                         special_flags=pygame.BLEND_RGB_ADD)
     for guard in state.level.guards:
         cone_glow = get_rotated_cone(guard.facing, colored=True)
@@ -566,16 +622,31 @@ def draw_world(window: pygame.Surface, state: GameState,
         dx, dy = level.door_pos
         draw_sprite(window, sprites["door"], dx * t, dy * t, t, COLOR_DOOR)
 
-    # Lampas (deg = gaiša, izslēgta = tumša)
+    # Lampas: korpuss stiprināts UZ sienas — zīmējam pie sienas iekšējās
+    # malas (level.lamp_light_origin), nevis grīdas flīzes centrā, un
+    # pagriežam pēc gaismas virziena (sprites zīmēts "karājas no augšas,
+    # spīd uz leju" — tāpēc der tieši FACING_ANGLES leņķi).
+    # ON un OFF sprites zīmē vienādā punktā ar vienādu pagriezienu,
+    # tāpēc lampa nepārvietojas, pārslēdzoties.
+    # Zīmējam PĒC sienu tekstūrām, lai siena korpusu neaizsegtu.
     lamp_frames = sprites["lamp_frames"]
-    for lamp_index, ((col, row), off_timer) in enumerate(level.lamps.items()):
+    for lamp_index, (lamp_pos, off_timer) in enumerate(level.lamps.items()):
         if off_timer <= 0:
             lamp = lamp_frames[lamp_index % len(lamp_frames)]
             color = COLOR_LAMP_ON
         else:
             lamp = sprites["lamp_off"]
             color = COLOR_LAMP_OFF
-        draw_sprite(window, lamp, col * t, row * t, t, color)
+        direction = level.lamp_info[lamp_pos][1]
+        angle = FACING_ANGLES[direction]
+        origin = level.lamp_light_origin(lamp_pos)
+        if lamp is None:
+            pygame.draw.rect(window, color,
+                             (origin[0] - t // 4, origin[1] - t // 4,
+                              t // 2, t // 2))
+        else:
+            rotated = pygame.transform.rotate(lamp, angle) if angle else lamp
+            window.blit(rotated, rotated.get_rect(center=origin))
 
     # Dekoratīvie šķēršļi (kastes/mucas) — kartē apzīmēti ar 'x'
     # Kuras kastes kur — izvēlamies pēc lauciņa koordinātām, lai vienmēr vienādi

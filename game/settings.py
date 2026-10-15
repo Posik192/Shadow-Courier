@@ -28,6 +28,7 @@ START_LIVES = 3       # dzīvības HUD (no 2. fāzes: noķeršana = uzreiz game 
 # --- 1. UNIKĀLĀ MEHĀNIKA: lampas gaisma izsauc trauksmi ---
 LIGHT_RADIUS = 120        # cik lielu laukumu apgaismo viena lampa (pikseļi)
 LAMP_DETECT_TIME = 0.8    # cik ilgi jāstāv degošas lampas gaismā, līdz sargi trauksmi
+LAMP_LIGHT_HALF_ANGLE = 55  # lampas gaismas sektora puse leņķī (kopā 110° konus)
 
 # --- 2. UNIKĀLĀ MEHĀNIKA: lampu atslēgšana ---
 LAMP_DISABLE_RANGE = 150  # no cik tālu var atslēgt lampu ar Space (pikseļi)

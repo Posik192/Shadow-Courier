@@ -556,4 +556,124 @@ g.load_level(1)
 assert g.alert_count == 0, "load_level neatiestatīja alert_count"
 print("alert_count: OK (viens skaitlis uz trauksmi, resetojas load_level)")
 
+# 19. Istabu dizains: K un M ATSEVIŠĶĀS istabās, katrai sava lampa.
+# "Istaba" šeit = grīdas apgabals, ko no pārējās kartes atdala šauras
+# (1 flīzes) eejas — heuristika: flīze ir "eeja", ja tai ciets blakus
+# gan pa kreisi+labi, gan augšā+apakšā. Plūdmaiņa, kas neiet caur eejām,
+# dod istabas iekšpusi. Tas nav pilns telpu analīzers, bet mūsu kartēm
+# (plašas istabas + 1-flīžu koridori) darbojas droši.
+def _is_passage(rows: list[str], c: int, r: int) -> bool:
+    """Vai flīze ir šaura eeja (ciets gan horizontāli abās pusēs, gan vertikāli)?"""
+    def solid(cc: int, rr: int) -> bool:
+        if cc < 0 or rr < 0 or rr >= len(rows) or cc >= len(rows[0]):
+            return True
+        return rows[rr][cc] in "#xD"  # durvis skaitās barjera
+    return (solid(c - 1, r) and solid(c + 1, r)) \
+        or (solid(c, r - 1) and solid(c, r + 1))
+
+def _room_region(rows: list[str], start: tuple[int, int]) -> set:
+    """Istabas iekšpuse: plūdmaiņa no starta, NEIEOJOT šaurajās eejās."""
+    seen = {start}
+    stack = [start]
+    while stack:
+        c, r = stack.pop()
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            n = (c + dc, r + dr)
+            if n in seen:
+                continue
+            ch = rows[n[1]][n[0]]
+            if ch in "#xD" or _is_passage(rows, *n):
+                continue
+            seen.add(n)
+            stack.append(n)
+    return seen
+
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    lvl = Level(rows, i)
+    k_region = _room_region(rows, lvl.key_pos)
+    m_region = _room_region(rows, lvl.package_pos)
+    assert lvl.package_pos not in k_region and lvl.key_pos not in m_region, \
+        f"Līmenis {i}: K un M nav atsevišķās istabās"
+    assert any(lamp in k_region for lamp in lvl.lamps), \
+        f"Līmenis {i}: atslēgas istabā nav lampas"
+    assert any(lamp in m_region for lamp in lvl.lamps), \
+        f"Līmenis {i}: sūtījuma istabā nav lampas"
+    # K sasniedzama PIRMS durvīm (durvis = cieta flīze, door_open=False)
+    start_tile = lvl.tile_at_pixel(*lvl.player_start)
+    assert find_path(lvl.is_solid_tile, start_tile, lvl.key_pos) is not None, \
+        f"Līmenis {i}: atslēga nav sasniedzama pirms durvju atvēršanas"
+print("K un M atsevišķās istabās: OK (katrai istabai sava lampa, K pirms D)")
+
+# 19b. Lampu stiprinājumi: siena + virziens telpā + korpuss pie sienas malas
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    lvl = Level(rows, i)
+    for lamp, (wall, direction) in lvl.lamp_info.items():
+        assert wall in lvl.walls, \
+            f"Līmenis {i}: lampas {lamp} stiprinājums {wall} nav siena"
+        ahead = (lamp[0] + direction[0], lamp[1] + direction[1])
+        assert not lvl.is_solid_tile(*ahead), \
+            f"Līmenis {i}: lampa {lamp} spīd cietā flīzē {ahead}"
+        # Gaismas sākumpunkts ir tieši uz kopējās malas starp lampas un
+        # sienas flīzi — korpuss NETIEK zīmēts koridora vidū
+        ox, oy = lvl.lamp_light_origin(lamp)
+        assert lvl.tile_at_pixel(ox - direction[0] * 2,
+                                 oy - direction[1] * 2) == wall, \
+            f"Līmenis {i}: lampas {lamp} oriģins nepieguļ sienai"
+        assert lvl.tile_at_pixel(ox + direction[0] * 2,
+                                 oy + direction[1] * 2) == lamp, \
+            f"Līmenis {i}: lampas {lamp} oriģins nav pie lampas flīzes"
+print("Lampu stiprinājumi: OK (uz sienas malas, virziens telpā)")
+
+# 19c. Riska dizains: K un M flīžu centri ir savas istabas lampas gaismā,
+# kamēr lampa deg; izslēdzot lampu, zona pazūd (paņemt var abos gadījumos).
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    lvl = Level(rows, i)
+    for item_pos in (lvl.key_pos, lvl.package_pos):
+        region = _room_region(rows, item_pos)
+        lamp = next(l for l in lvl.lamps if l in region)
+        ix = item_pos[0] * s.TILE_SIZE + s.TILE_SIZE / 2
+        iy = item_pos[1] * s.TILE_SIZE + s.TILE_SIZE / 2
+        assert lvl.point_in_lamp_light(lamp, ix, iy), \
+            f"Līmenis {i}: priekšmets {item_pos} nav lampas {lamp} gaismā"
+        lvl.lamps[lamp] = 5.0  # lampa izslēgta
+        assert not lvl.point_in_lamp_light(lamp, ix, iy), \
+            f"Līmenis {i}: izslēgta lampa {lamp} joprojām apgaismo"
+        lvl.lamps[lamp] = 0.0  # atjaunojam
+print("Priekšmeti lampu gaismā: OK (paņemšana gaišā = risks, tumsā = droši)")
+
+# 19d. Paņemšana NAV atkarīga no lampas stāvokļa (gaišā un tumsā)
+for i, rows in enumerate(LEVEL_MAPS, 1):
+    g = GameState()
+    g.load_level(i)
+    place_on_tile(g, *g.level.key_pos)
+    g.update(0.01, 0, 0, False, True)
+    assert g.has_key, f"Līmenis {i}: atslēgu nevar paņemt degošas lampas gaismā"
+    g = GameState()
+    g.load_level(i)
+    for lamp in g.level.lamps:
+        g.level.lamps[lamp] = 5.0  # visas lampas izslēgtas
+    place_on_tile(g, *g.level.package_pos)
+    g.update(0.01, 0, 0, False, True)
+    assert g.level.package_taken, f"Līmenis {i}: sūtījumu nevar paņemt tumsā"
+print("Paņemšana gaišā un tumsā: OK")
+
+# 19e. Gaisma neiet cauri sienai: sektors + redzeslīnijas pārbaude.
+# Lampai (1,13) 1. līmenī virziens ir pa labi; siena (8,13) bloķē staru.
+old_radius = s.LIGHT_RADIUS
+s.LIGHT_RADIUS = 500  # pagaidu lielāks rādiuss, lai stars pietiktu aiz sienas
+lvl = Level(LEVEL_MAPS[0], 1)
+t = s.TILE_SIZE
+assert lvl.lamp_info[(1, 13)][1] == (1, 0), "lampai (1,13) jāspīd pa labi"
+assert not lvl.point_in_lamp_light((1, 13), 10 * t + t / 2, 13 * t + t / 2), \
+    "gaisma izgāja cauri sienai (8,13) uz (10,13)!"
+assert lvl.point_in_lamp_light((1, 13), 5 * t + t / 2, 13 * t + t / 2), \
+    "kontrolpunkts pirms sienas nav gaismā"
+s.LIGHT_RADIUS = old_radius
+# Sektors: punkts tieši virs lampas (90° no gaismas virziena) ir tumsā,
+# kaut arī attālumā un redzeslīnijā
+lvl = Level(LEVEL_MAPS[0], 1)
+assert not lvl.point_in_lamp_light((1, 13), 1 * t + t / 2, 12 * t + t / 2), \
+    "punkts ārpus sektora tika uzskatīts par apgaismotu"
+print("Gaisma apgriezta ar sienām un sektoru: OK")
+
 print("\nVISI TESTI IZJAUTI ✅")
