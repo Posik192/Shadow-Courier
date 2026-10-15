@@ -1521,21 +1521,51 @@ def remember_rank(ui: dict, state: GameState) -> None:
         ui["best_ranks"][state.level_number] = better_rank(previous, rank)
 
 
-def ask_player_name() -> str:
-    """Pajautā spēlētāja vārdu konsolē PIRMS pygame.init().
+PLAYER_NAME_FILE = "player_name.txt"  # šeit atceramies pēdējo vārdu
+
+
+def ask_credentials() -> dict:
+    """Pajautā vārdu un paroli konsolē PIRMS pygame.init().
 
     Tas ir apzināti vienkārši (prakses slaidu pieeja): spēle sākas
-    no termināļa, tāpēc vārdu prasām turpat ar input(). Tukša ievade
-    nozīmē "PLAYER". Headless režīmā (SDL_VIDEODRIVER=dummy, testi)
-    nejautājam neko — tur neviens nevar atbildēt.
+    no termināļa, tāpēc prasām turpat ar input().
+    - Ja konts ar šādu vārdu serverī vēl nav — tas tiek izveidots.
+    - Ja konts ir — parole tiek pārbaudīta; nepareiza = jautā vēlreiz.
+    - Tukša parole = spēle bez konta (rekords netiks sūtīts).
+    - Vārdu saglabājam player_name.txt, lai nākamreiz piedāvātu to pašu.
+    Headless režīmā (testi) nejautājam neko — tur neviens nevar atbildēt.
     """
+    player = {"name": "PLAYER", "password": "", "token": None}
     if os.environ.get("SDL_VIDEODRIVER") == "dummy":
-        return "PLAYER"
+        return player
+    # Pēdējais lietotais vārds — lai nākamreiz nav jāraksta no jauna
+    saved_name = ""
+    if os.path.exists(PLAYER_NAME_FILE):
+        with open(PLAYER_NAME_FILE, encoding="utf-8") as f:
+            saved_name = f.read().strip()
     try:
-        name = input("Tavs vārds: ").strip()
+        while True:
+            prompt = f"Tavs vārds [{saved_name}]: " if saved_name else "Tavs vārds: "
+            name = input(prompt).strip() or saved_name or "PLAYER"
+            password = input("Parole (tukšs = spēlēt bez konta): ").strip()
+            if not password:
+                print("Spēlē bez konta — rekords netiks saglabāts serverī.")
+                player["name"] = name
+                return player
+            token, status = api_client.login_or_register(name, password)
+            if status == "ok":
+                print(f"Sveiki, {name}! Rekords tiks saglabāts serverī.")
+                with open(PLAYER_NAME_FILE, "w", encoding="utf-8") as f:
+                    f.write(name)
+                player.update(name=name, password=password, token=token)
+                return player
+            if status == "no_server":
+                print("Serveris nav pieejams — spēlē bez rekordu saglabāšanas.")
+                player.update(name=name, password=password)
+                return player
+            print("Nepareiza parole šim vārdam (vai vārds jau aizņemts) — mēģini vēlreiz.")
     except EOFError:
-        name = ""  # nav konsoles (piem., palaists no citas programmas)
-    return name or "PLAYER"
+        return player  # nav konsoles (piem., palaists no citas programmas)
 
 
 def reset_score_flag(ui: dict) -> None:
@@ -1544,26 +1574,32 @@ def reset_score_flag(ui: dict) -> None:
     ui["score_result"] = None
 
 
-def send_score_to_server(ui: dict, state: GameState, player_name: str) -> None:
+def send_score_to_server(ui: dict, state: GameState, player: dict) -> None:
     """Nosūta rekordu serverim VIENU REIZI, kad spēle beigusies.
 
-    Login un sūtīšana notiek šeit (spēles beigās), nevis spēles sākumā —
-    tāpēc spēle nesasalst palaišanas brīdī, ja serveris ir izslēgts
-    (timeout=3 s uz vienu pieprasījumu ir pieņemama pauze beigu ekrānā).
-    api_client pats noķer visas kļūdas — spēle nekad nenokrīt servera dēļ.
+    Tokens parasti jau ir no spēles sākuma (ask_credentials). Ja torea-
+    dā serveris bija izslēgts, šeit mēģinām ielogoties vēlreiz — tāpēc
+    spēle nesasalst palaišanas brīdī (timeout=3 s ir pieņemama pauze
+    beigu ekrānā). api_client pats noķer visas kļūdas — spēle nekad
+    nenokrīt servera dēļ.
     """
     if ui["score_sent"]:
         return
     ui["score_sent"] = True  # lai nesūta atkārtoti katrā kadrā
-    token = api_client.login_or_register(player_name)
+    token = player["token"]
+    if token is None and player["password"]:
+        # Serveris sākumā nebija pieejams — mēģinām vēlreiz tagad
+        token, _ = api_client.login_or_register(player["name"],
+                                                player["password"])
+        player["token"] = token
     ui["score_result"] = token is not None and \
         api_client.send_score(token, state.score)
 
 
 def main() -> None:
     """Spēles galvenā funkcija: atver logu un griež spēles ciklu."""
-    # Vārdu jautājam PIRMS pygame.init() — konsolē, kamēr logs vēl nav atvērts
-    player_name = ask_player_name()
+    # Vārdu un paroli jautājam PIRMS pygame.init() — konsolē
+    player = ask_credentials()
 
     pygame.init()
     pygame.display.set_caption("Shadow Courier")
@@ -1629,13 +1665,13 @@ def main() -> None:
             # Space un E apstrādājam handle_key, lai viens nospiešanas = viena darbība
             state.update(dt, move_x, move_y, False, False)
             if state.status == STATUS_GAME_OVER:
-                send_score_to_server(ui, state, player_name)
+                send_score_to_server(ui, state, player)
                 current_screen = SCREEN_GAME_OVER
                 ui["selection"] = 0
             elif state.status == STATUS_WON:
                 ui["completed_levels"].add(state.level_number)
                 remember_rank(ui, state)
-                send_score_to_server(ui, state, player_name)
+                send_score_to_server(ui, state, player)
                 current_screen = SCREEN_WON
                 ui["selection"] = 0
             elif state.status == STATUS_LEVEL_COMPLETE:

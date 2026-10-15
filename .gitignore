@@ -221,3 +221,6 @@ __marimo__/
 
 # SQLite datubaze
 *.db
+
+# Speletaja saglabatais vards
+player_name.txt

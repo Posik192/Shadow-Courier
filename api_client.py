@@ -3,6 +3,12 @@
 Spēle beigās (CAUGHT vai WIN) aizsūta rekordu serverim, lai tas
 parādītos līderu tabulā (http://localhost:8000/).
 
+Spēlētājs spēles sākumā ievada savu vārdu UN paroli:
+- ja konts ar šādu vārdu vēl nav — serveris to izveido (register);
+- ja konts ir — serveris pārbauda paroli (login) un iedod tokenu.
+Konts paliek datubāzē, tāpēc nākamajā reizē ar to pašu vārdu un
+paroli spēlētājs ienāk savā vecmā kontā un statistika krājas tālāk.
+
 Svarīgi: visas funkcijas ir ar try/except — spēle NEKAD nedrīkst
 nokrist, ja serveris ir izslēgts. Sliktākajā gadījumā rekords
 vienkārši netiek saglabāts.
@@ -14,35 +20,59 @@ import requests
 SERVER = "http://localhost:8000"  # kur strādā uvicorn (api.main:app)
 TIMEOUT = 3                       # sekundes — cik ilgi gaidām atbildi
 
-# Fiksēta parole visiem spēles spēlētājiem.
-# Kāpēc tā: /scores prasa tokenu (3. dienas uzdevums), bet spēle pati
-# noformē spēlētāju — spēlētājs ievada tikai vārdu, paroli viņš nezina.
-# Tā nav īsta drošība, tikai veids, kā serveris atšķir spēlētājus.
-GAME_PASSWORD = "shadow-courier-spele"
+# Iespējamie atbilžu statusi (lai spēle var atšķirt kļūdu veidus):
+# "ok" — viss kārtībā; "wrong_password" — vārds aizņemts / parole nepareiza;
+# "taken" — reģistrējot vārds jau eksistē; "no_server" — serveris neatbild.
 
 
-def login_or_register(name: str) -> str | None:
-    """Atgriež servera tokenu šim spēlētājam vai None, ja neizdevās.
+def try_login(name: str, password: str) -> tuple[str | None, str]:
+    """Mēģina ielogoties. Atgriež (tokens, statuss).
 
-    Plūsma:
-    1. Mēģina POST /login — ja spēlētājs jau eksistē, viss kārtībā.
-    2. Ja 401 (spēlētāja nav vai cita parole) — POST /register.
-    3. Pēc reģistrācijas vēlreiz POST /login, lai dabūtu tokenu.
-
-    None nākas, ja serveris ir izslēgts vai atbild ar kļūdu.
+    Tokens ir None, ja statuss nav "ok".
     """
     try:
-        dati = {"name": name, "password": GAME_PASSWORD}
-        r = requests.post(f"{SERVER}/login", json=dati, timeout=TIMEOUT)
-        if r.status_code == 401:
-            # Spēlētāja vēl nav — reģistrējam un piesakāmies no jauna
-            requests.post(f"{SERVER}/register", json=dati, timeout=TIMEOUT)
-            r = requests.post(f"{SERVER}/login", json=dati, timeout=TIMEOUT)
+        r = requests.post(f"{SERVER}/login",
+                          json={"name": name, "password": password},
+                          timeout=TIMEOUT)
         if r.status_code == 200:
-            return r.json()["token"]
+            return r.json()["token"], "ok"
+        if r.status_code == 401:
+            return None, "wrong_password"
     except requests.RequestException:
         pass  # serveris izslēgts vai tīkla kļūda — spēle turpina bez servera
-    return None
+    return None, "no_server"
+
+
+def try_register(name: str, password: str) -> str:
+    """Mēģina izveidot jaunu kontu. Atgriež statusu."""
+    try:
+        r = requests.post(f"{SERVER}/register",
+                          json={"name": name, "password": password},
+                          timeout=TIMEOUT)
+        if r.status_code == 201:
+            return "ok"
+        if r.status_code == 400:
+            return "taken"  # vārds jau aizņemts — droši vien parole nepareiza
+    except requests.RequestException:
+        pass
+    return "no_server"
+
+
+def login_or_register(name: str, password: str) -> tuple[str | None, str]:
+    """Ienāk esošā kontā vai izveido jaunu. Atgriež (tokens, statuss).
+
+    Plūsma:
+    1. Mēģina login — ja konts ir un parole pareiza, viss kārtībā.
+    2. Ja 401 — konta varētu nebūt: mēģina register.
+    3. Ja reģistrācija izdodas — login vēlreiz, lai dabūtu tokenu.
+    4. Ja reģistrējot saka "taken" — vārds eksistē, parole bija nepareiza.
+    """
+    token, status = try_login(name, password)
+    if status != "wrong_password":
+        return token, status  # "ok" vai "no_server"
+    if try_register(name, password) == "ok":
+        return try_login(name, password)  # jauns konts — ielogojamies
+    return None, "wrong_password"  # vārds aizņemts, parole nesakrīt
 
 
 def send_score(token: str, score: int) -> bool:
