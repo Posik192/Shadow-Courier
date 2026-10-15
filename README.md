@@ -13,3 +13,39 @@ The player is a secret courier who must deliver a package through guarded areas.
 - Score system
 - Pause and Game Over screens
 - Leaderboard with saved scores
+
+## Palaišana
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Spēle:
+```bash
+python -m client.main
+```
+
+Serveris (atver http://localhost:8000/docs):
+```bash
+uvicorn api.main:app --reload
+```
+
+Pārbaudes:
+```bash
+python check_game.py    # spēles loģikas testi
+python check_api.py     # servera testi (serverim jāstrādā)
+```
+
+## API endpointi
+
+| Metode | Adrese | Ko dara | Atbilde |
+|--------|--------|---------|---------|
+| POST | /register | Reģistrē spēlētāju (vārds + parole) | 201 / 400 |
+| POST | /login | Pārbauda paroli, atdod tokenu | 200 / 401 |
+| POST | /scores | Saglabā rekordu (prasa `token` galveni) | 201 / 401 / 422 |
+| GET | /scores/top | 10 labākie rekordi | 200 |
+| GET | /players/{name}/stats | Spēļu skaits un labākais rezultāts | 200 / 404 |
+
+Rekordi un spēlētāji glabājas SQLite failā `game.db` (netiek iekļauts Git).
