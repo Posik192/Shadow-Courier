@@ -1,8 +1,7 @@
 """Datubāzes savienojums (SQLite).
 
-Datubāze ir viens fails game.db projektā. Pirmajā palaišanas reizē
-tiek izveidotas abas tabulas (scores un players), nākamajās reizēs
-IF NOT EXISTS neko nemaina.
+Datubāze ir viens fails game.db. Tabulas izveido pirmajā reizē,
+IF NOT EXISTS tāpēc nākamajās reizēs neko nemaina.
 """
 
 import sqlite3
@@ -11,16 +10,16 @@ DB_PATH = "game.db"
 
 
 def get_connection() -> sqlite3.Connection:
-    """Atver savienojumu ar datubāzi un nodrošina, ka tabulas eksistē."""
+    """Atver savienojumu un nodrošina, ka abas tabulas eksistē."""
     conn = sqlite3.connect(DB_PATH)
-    # Rekordu tabula: id datubāze piešķir pati (1, 2, 3, ...)
+    # Rekordu tabula: id datubāze piešķir pati
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             player TEXT NOT NULL,
             score INTEGER NOT NULL
         )""")
-    # Spēlētāju tabula: parole tiek glabāta tikai kā hash
+    # Spēlētāju tabula: parole tikai kā hash
     conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
             name TEXT PRIMARY KEY,
@@ -31,11 +30,8 @@ def get_connection() -> sqlite3.Connection:
 
 
 def get_top_scores(limit: int = 10) -> list[dict]:
-    """Atgriež labākos rekordus (lielākie pirmie).
-
-    Kopīga palīgfunkcija — to lieto gan API endpoint /scores/top,
-    gan Jinja mājaslapa GET /, lai abi rāda vienus un tos pašus datus.
-    """
+    """Labākie rekordi (lielākie pirmie). To lieto gan /scores/top,
+    gan mājaslapa GET / — lai abi rāda tos pašus datus."""
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT player, score FROM scores "
@@ -44,11 +40,8 @@ def get_top_scores(limit: int = 10) -> list[dict]:
 
 
 def get_player_page(name: str) -> dict | None:
-    """Spēlētāja profila dati Jinja lapai. None, ja spēlētāja nav.
-
-    Atgriež vārdu, spēļu skaitu, labāko rezultātu un 5 pēdējos
-    rezultātus (jaunākie pirmie, pēc id — tas aug automātiski).
-    """
+    """Profila dati Jinja lapai: spēļu skaits, labākais un 5 pēdējie
+    rezultāti (jaunākie pirmie pēc id). None, ja spēlētāja nav."""
     with get_connection() as conn:
         exists = conn.execute(
             "SELECT 1 FROM players WHERE name = ?", (name,)).fetchone()

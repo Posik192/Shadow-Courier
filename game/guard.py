@@ -1,15 +1,14 @@
-"""Sargs ar stāvokļu sistēmu (mākslīgais intelekts).
+"""Sargs ar stāvokļu sistēmu (AI).
 
-Sargs vienmēr ir tieši vienā no pieciem stāvokļiem:
-
-    PATROL              — iet uz nejaušiem kartes punktiem pa BFS ceļu
+Sargs vienmēr ir tieši vienā stāvoklī:
+    PATROL              — iet uz nejaušiem punktiem pa BFS ceļu
     LAMP_ALERT          — lampas trauksme: skrien uz pēdējo redzēto vietu
-    SEARCH              — meklē apkārt pēdējai redzētajai vietai (6 sekundes)
+    SEARCH              — meklē apkārt pēdējai redzētajai vietai (6 s)
     FLASHLIGHT_WARNING  — ierauga spēlētāju lukturī un apstājas (1.30 s)
-    CHASE               — dzenās pakaļ spēlētājam, kamēr viņš redzams konusā
+    CHASE               — dzenas pakaļ, kamēr spēlētājs redzams konusā
 
-Visi taimeri tiek rēķināti ar dt (sekundes), nevis kadru skaitu.
-x, y — hitboxa augšējais kreisais stūris (tāpat kā spēlētājam).
+Visi taimeri ar dt (sekundēm), ne kadru skaitu.
+x, y — hitboxa augšējais kreisais stūris (kā spēlētājam).
 """
 
 import math
@@ -31,7 +30,7 @@ PATROL_PAUSE_CHANCE = 0.5
 
 
 def tile_hitbox_corner(col: int, row: int) -> tuple[float, float]:
-    """Hitboxa augšējais kreisais stūris, ja hitboxa centrs ir lauciņa centrā."""
+    """Hitboxa augšējais kreisais stūris, ja centrs ir lauciņa centrā."""
     return (col * TILE_SIZE + TILE_SIZE / 2 - GUARD_HIT_W / 2,
             row * TILE_SIZE + TILE_SIZE / 2 - GUARD_HIT_H / 2)
 
@@ -40,28 +39,28 @@ class Guard:
     """Viens sargs ar pozīciju, skata virzienu un stāvokļu mašīnu."""
 
     def __init__(self, col: int, row: int, horizontal: bool, speed: int) -> None:
-        """Uzliek sargu uz lauciņa: hitboxs centrēts lauciņa vidū.
+        """Uzliek sargu uz lauciņa (hitboxs centrēts).
 
-        horizontal vairs nenosaka patruļas veidu (G un V patrulē brīvi),
-        to lieto tikai sākuma skata virzienam.
+        horizontal vairs nenosaka patruļu (G un V patrulē brīvi),
+        tikai sākuma skata virzienu.
         """
         self.x, self.y = tile_hitbox_corner(col, row)
         self.speed = speed
         self.state = STATE_PATROL
         self.facing = (1.0, 0.0) if horizontal else (0.0, 1.0)
-        self.path = []                 # atlikušie ceļa punkti (hitboxa stūri, pikseļi)
-        self.patrol_memory = []        # pēdējie PATROL_MEMORY patruļas mērķi (lauciņi)
+        self.path = []                 # atlikušie ceļa punkti (pikseļi)
+        self.patrol_memory = []        # pēdējie PATROL_MEMORY patruļas mērķi
         self.pause_timer = 0.0         # cik ilgi vēl stāv patruļas punktā
         self.search_timer = 0.0        # cik ilgi vēl meklē (SEARCH)
         self.search_points = []        # meklēšanas punkti (lauciņi)
-        self.warning_timer = 0.0       # cik ilgi vēl brīdina (FLASHLIGHT_WARNING)
-        self.replan_timer = 0.0        # kad no jauna plānot dzīšanās ceļu (CHASE)
-        self.alert_icon_timer = 0.0    # cik ilgi virs sarga rāda sarkano "!"
+        self.warning_timer = 0.0       # cik ilgi vēl brīdina
+        self.replan_timer = 0.0        # kad no jauna plānot dzīšanās ceļu
+        self.alert_icon_timer = 0.0    # cik ilgi virs sarga rāda "!"
         self.last_known_position = (0.0, 0.0)  # kur pēdējo reizi redzēts spēlētājs
-        self.moving = False            # vai šobrīd kustas (animācijai klientā)
+        self.moving = False            # vai šobrīd kustas (animācijai)
 
     def center(self) -> tuple[float, float]:
-        """Hitboxa centra punkts pikseļos."""
+        """Hitboxa centrs pikseļos."""
         return (self.x + GUARD_HIT_W / 2, self.y + GUARD_HIT_H / 2)
 
     # --- Galvenā metode: GameState to izsauc vienreiz katrā kadrā ---
@@ -70,9 +69,8 @@ class Guard:
                player_center: tuple[float, float] | None) -> None:
         """Viens domāšanas solis: redze, tad stāvokļa darbība.
 
-        level zina karti (sienas, BFS), player_center — spēlētāja hitboxa
-        centrs pikseļos vai None, ja spēlētājs paslēpies slēptuvē
-        (tad sargs viņu nevar pamanīt).
+        player_center = None, ja spēlētājs paslēpies — tad sargs viņu
+        nevar pamanīt.
         """
         if self.alert_icon_timer > 0:
             self.alert_icon_timer = max(0.0, self.alert_icon_timer - dt)
@@ -101,7 +99,7 @@ class Guard:
     # --- PATROL: nejauši mērķi pa visu karti ---
 
     def _update_patrol(self, dt: float, level) -> None:
-        """Iet uz patruļas mērķi; sasniedzot — dažreiz apstājas un izvēlas jaunu."""
+        """Iet uz patruļas mērķi; sasniedzot — dažreiz apstājas un ņem jaunu."""
         if self.pause_timer > 0:
             self.pause_timer -= dt
             self.moving = False
@@ -121,9 +119,9 @@ class Guard:
         free.discard(start)
         candidates = [tile for tile in free if tile not in self.patrol_memory]
         if not candidates:
-            candidates = list(free)  # ja visas vietas jau apstaigātas — drīkst atkārtot
+            candidates = list(free)  # visas vietas apstaigātas — drīkst atkārtot
         if not candidates:
-            return start  # sargs iesprostots (nav kur iet) — stāv uz vietas
+            return start  # iesprostots — stāv uz vietas
         target = random.choice(candidates)
         self.patrol_memory.append(target)
         if len(self.patrol_memory) > s.PATROL_MEMORY:
@@ -159,7 +157,7 @@ class Guard:
     # --- SEARCH: meklēšana ap pēdējo redzēto vietu ---
 
     def _start_search(self, level) -> None:
-        """Sāk meklēšanu: 3-5 nejauši punkti 3-6 flīžu rādiusā, laiks 6 s."""
+        """Sāk meklēšanu: daži nejauši punkti apkārt, laiks 6 s."""
         self.state = STATE_SEARCH
         self.search_timer = s.SEARCH_TIME
         self.path = []
@@ -177,7 +175,7 @@ class Guard:
                 options.append((col, row))
         count = random.randint(s.SEARCH_POINT_COUNT_MIN, s.SEARCH_POINT_COUNT_MAX)
         if len(options) < count:
-            # Ja rādiusā par maz brīvo vietu — meklē jebkur sasniedzamā vietā
+            # Rādiusā par maz brīvo vietu — meklē jebkur sasniedzamā vietā
             options = [tile for tile in free if tile != start]
         random.shuffle(options)
         self.search_points = options[:count]
@@ -213,7 +211,7 @@ class Guard:
 
     def _update_warning(self, dt: float, level,
                         player_center: tuple[float, float], seen: bool) -> None:
-        """Stāv uz vietas. Pēc 1.30 s: ja spēlētājs vēl redzams — CHASE, citādi SEARCH."""
+        """Stāv uz vietas. Pēc 1.30 s: ja vēl redzams — CHASE, citādi SEARCH."""
         self.moving = False
         if seen:
             self.last_known_position = player_center
@@ -225,7 +223,7 @@ class Guard:
                 self._start_search(level)
 
     def _start_chase(self) -> None:
-        """Sāk dzīšanos — ceļu uz spēlētāju izplāno nākamajā solī."""
+        """Sāk dzīšanos — ceļu izplāno nākamajā solī."""
         self.state = STATE_CHASE
         self.replan_timer = 0.0
 
@@ -249,11 +247,8 @@ class Guard:
 
     def _can_see_player(self, level,
                         player_center: tuple[float, float] | None) -> bool:
-        """Vai spēlētājs ir luktura konusā: tuvu, leņķī un bez sienas pa ceļam.
-
-        Ja player_center ir None (spēlētājs paslēpies slēptuvē),
-        sargs viņu nevar pamanīt — vienmēr False.
-        """
+        """Vai spēlētājs ir luktura konusā: tuvu, leņķī, bez sienas pa ceļam.
+        None (paslēpies slēptuvē) = nekad neredz."""
         if player_center is None:
             return False
         gx, gy = self.center()
@@ -307,17 +302,17 @@ class Guard:
         return (int(point[0]) // TILE_SIZE, int(point[1]) // TILE_SIZE)
 
     def _plan_path_to(self, level, goal_tile: tuple[int, int]) -> bool:
-        """Uzzīmē BFS ceļu uz mērķa lauciņu. Atgriež False, ja nav sasniedzams."""
+        """Uzzīmē BFS ceļu uz mērķi. False, ja nav sasniedzams."""
         tiles = find_path(level.is_solid_tile, self._current_tile(), goal_tile)
         if tiles is None:
             self.path = []
             return False
-        # Pirmo lauciņu (kurā jau stāvam) izlaižam; ceļš = hitboxa stūri
+        # Pirmo lauciņu (kurā jau stāvam) izlaižam
         self.path = [tile_hitbox_corner(col, row) for col, row in tiles[1:]]
         return True
 
     def _follow_path(self, dt: float, level, speed: float) -> bool:
-        """Iet pa ceļa punktiem. Atgriež True, kad ceļš noiets līdz galam."""
+        """Iet pa ceļa punktiem. True, kad ceļš noiets līdz galam."""
         self.moving = False
         step = speed * dt  # cik pikseļus var noiet šajā kadrā
         while self.path and step > 0:
@@ -325,7 +320,7 @@ class Guard:
             dx, dy = tx - self.x, ty - self.y
             distance = math.hypot(dx, dy)
             if distance <= step:
-                # Sasniegts ceļa punkts — atlikušo soli tērējam nākamajam
+                # Sasniegts punkts — atlikušo soli tērējam nākamajam
                 self.x, self.y = tx, ty
                 self.path.pop(0)
                 step -= distance
@@ -333,7 +328,7 @@ class Guard:
             self._face(dx, dy)
             if not self._try_move(level, dx / distance * step,
                                   dy / distance * step):
-                self.path = []  # iestrēga — nākamajā kadrā plānos no jauna
+                self.path = []  # iestrēga — nākamajā kadrā plāno no jauna
                 return True
             step = 0
         return not self.path

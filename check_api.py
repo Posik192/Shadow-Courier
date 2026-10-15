@@ -1,10 +1,7 @@
-"""Servera pašpārbaude: palaiž pēc tam, kad strādā uvicorn.
+"""Servera pašpārbaude — palaiž, kamēr otrā terminālī strādā uvicorn.
 
-Lietošana:
-    1. terminālī: uvicorn api.main:app --reload
-    2. citā terminālī: python check_api.py
-
-Pārbauda visus endpointus un statusa kodus (201, 400, 401, 404, 422).
+    1. terminālis: uvicorn api.main:app --reload
+    2. terminālis: python check_api.py
 """
 
 import requests
@@ -75,20 +72,18 @@ def main() -> None:
     parbaudiet("stats nezināms -> 404", r.status_code == 404)
 
     # --- Mājaslapas (Jinja) ---
-    # Līderu tabula: 200 un satur tabulu ar mūsu testa rekordu
     r = requests.get(f"{BASE}/", timeout=5)
     parbaudiet("GET / atbild 200", r.status_code == 200)
     parbaudiet("GET / satur tabulu", "<table" in r.text)
     parbaudiet("GET / satur testa spēlētāju", "testotajs" in r.text)
 
-    # Spēlētāja profils: eksistējošs -> 200 ar vārdu, neeksistējošs -> 404
     r = requests.get(f"{BASE}/players/testotajs", timeout=5)
     parbaudiet("profils 200 un satur vārdu",
                r.status_code == 200 and "testotajs" in r.text)
     r = requests.get(f"{BASE}/players/nebuna", timeout=5)
     parbaudiet("profils nezināms -> 404", r.status_code == 404)
 
-    # Statiskie faili (style.css) tiek servēti no /static/
+    # Statiskie faili (style.css) no /static/
     r = requests.get(f"{BASE}/static/style.css", timeout=5)
     parbaudiet("/static/style.css atbild 200", r.status_code == 200)
 

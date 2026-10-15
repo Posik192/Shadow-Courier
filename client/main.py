@@ -1,11 +1,11 @@
 """Shadow Courier — pygame klients.
 
 Šis fails TIKAI nolasa taustiņus un zīmē ekrānu.
-Visa spēles loģika (noteikumi) ir mapē game/ — skaties game/game_state.py.
+Visa loģika ir mapē game/ (skat. game/game_state.py).
 
 Palaišana:  python -m client.main
 Vadība:     WASD/bultiņas — kustēties, Space — izslēgt lampu,
-            E — paņemt atslēgu/atvērt durvis, P — pauze, Esc — atpakaļ.
+            E — paņemt/atvērt, P — pauze, Esc — atpakaļ.
 """
 
 import math
@@ -21,8 +21,7 @@ from game.level import LEVEL_MAPS
 from game.rank import better_rank
 
 # Servera klients rekordu sūtīšanai (spēles beigās).
-# Tiek importēts tikai šeit — sim_play.py un citi skripti to nelieto,
-# tāpēc simulācijas nekad nesūta neko uz serveri.
+# Simulācijas skripti to nelieto, tāpēc sims nekad nesūta uz serveri.
 import api_client
 
 # --- LOGA UZSTĀDĪJUMI ---
@@ -30,27 +29,26 @@ FPS = 60           # kadri sekundē
 HUD_HEIGHT = 112   # apakšējā HUD josla (pikseļi); karte zīmējas virs tās
 TOP_BAR_HEIGHT = 30  # augšējā plānā josla (zīmējas PĀRKLĀJ pasaulei)
 
-# --- TĒLU IZMĒRI UN HITBOXI (līgums ar game/ moduli) ---
-# game/settings.py definē šīs konstantes. getattr noklusējumi ļauj
-# klientam strādāt arī tad, ja game/ versija tās vēl nepiedāvā.
+# --- HITBOXI (līgums ar game/ moduli) ---
+# getattr noklusējumi, lai klients strādātu arī ar vecāku game/ versiju
 PLAYER_HIT_W = getattr(gs, "PLAYER_HIT_W", 24)
 PLAYER_HIT_H = getattr(gs, "PLAYER_HIT_H", 14)
 GUARD_HIT_W = getattr(gs, "GUARD_HIT_W", 36)
 GUARD_HIT_H = getattr(gs, "GUARD_HIT_H", 36)
-PLAYER_SPRITE = getattr(gs, "PLAYER_SPRITE", 64)  # spēlētāja tēls 2x lielāks
-GUARD_SPRITE = getattr(gs, "GUARD_SPRITE", 72)    # sarga tēls 2x lielāks
+PLAYER_SPRITE = getattr(gs, "PLAYER_SPRITE", 64)
+GUARD_SPRITE = getattr(gs, "GUARD_SPRITE", 72)
 START_LIVES = getattr(gs, "START_LIVES", 3)
 
 
 def sprite_pos(hit_x: float, hit_y: float, hit_w: int, hit_h: int,
                sprite_size: int) -> tuple[float, float]:
-    """Sprite augšējais kreisais stūris tā, lai tēls "stāvētu" uz hitboxa:
-    kājas uz hitboxa apakšas, horizontāli centrēts."""
+    """Sprite augšējais kreisais stūris tā, lai tēls "stāvētu" uz hitboxa
+    (kājas uz hitboxa apakšas, horizontāli centrēts)."""
     return (hit_x + hit_w / 2 - sprite_size / 2, hit_y + hit_h - sprite_size)
 
 
 # --- PASAULES KRĀSAS (R, G, B) ---
-COLOR_FLOOR = (34, 40, 52)      # grīda — tumši pelēka
+COLOR_FLOOR = (34, 40, 52)      # grīda
 COLOR_WALL = (90, 100, 120)     # sienas
 COLOR_PLAYER = (80, 160, 255)   # kurjers (rezerves kvadrāts, ja nav bildes)
 COLOR_GUARD = (230, 70, 70)     # sargs (rezerves kvadrāts)
@@ -62,42 +60,41 @@ COLOR_LAMP_ON = (255, 240, 160) # lampa, kas deg
 COLOR_LAMP_OFF = (80, 80, 90)   # izslēgta lampa
 COLOR_BAD = (214, 84, 72)       # sarkans — brīdinājumi un CAUGHT
 
-# --- INDUSTRIĀLAIS PIKSEĻU UI STILS ---
+# --- PIKSEĻU UI KRĀSAS ---
 UI_BG = (20, 23, 28)        # ogļu pelēks fons (#14171c)
-UI_PANEL = (27, 31, 38)     # paneļa fons (nedaudz gaišāks par fonu)
+UI_PANEL = (27, 31, 38)     # paneļa fons
 UI_LINE = (58, 63, 72)      # plānas līnijas / kontūras
 UI_TEXT = (232, 227, 211)   # krēmkrāsas gaišs teksts (#e8e3d3)
 UI_DIM = (126, 128, 134)    # pelēks palīgteksts
 UI_LOCKED = (88, 90, 96)    # bloķēts elements
 UI_ACCENT = (232, 185, 60)  # VIENS dzeltens akcents (#e8b93c)
 
-# --- APAKŠĒJĀS HUD JOSLAS STILS (4 sadaļas pēc dizaina atsauces) ---
-# Sadaļu virsraksti un vērtības rakstītas ar treknu Verdana fontu,
-# kas nokopēts projektā — tā izskats ir vienāds jebkurā datorā.
+# --- APAKŠĒJĀ HUD JOSLA ---
+# Fonts nokopēts projektā — lai izskats vienāds jebkurā datorā
 HUD_FONT_PATH = os.path.join("assets", "fonts", "VerdanaBold.ttf")
 HUD_TITLE_SIZE = 16          # sadaļu virsraksti (HEALTH, COINS, ...)
 HUD_VALUE_SIZE = 30          # lielās vērtības ("READY", "85%", "2 / 5")
 HUD_BG = (17, 22, 25)        # joslas fons (#111619)
 HUD_TEXT = (244, 243, 235)   # gandrīz balts teksts (#F4F3EB)
-HUD_DIVIDER = (42, 49, 56)   # plānās vertikālās dalītājlīnijas (#2a3138)
+HUD_DIVIDER = (42, 49, 56)   # vertikālās dalītājlīnijas (#2a3138)
 HUD_PADDING = 16             # sadaļas iekšējā atstarpe no malām (px)
-HUD_READY = (90, 200, 120)   # zaļš "READY" un gatavas uzlādes josla
+HUD_READY = (90, 200, 120)   # zaļš "READY" un uzlādes josla
 HUD_DANGER = (255, 59, 48)   # sarkans briesmu aizpildījums (#ff3b30)
-HUD_DANGER_BG = (58, 18, 16) # EXPOSURE sadaļas fons pie >= 75% (#3a1210)
+HUD_DANGER_BG = (58, 18, 16) # EXPOSURE fons pie >= 75% (#3a1210)
 HEART_RED = (228, 72, 60)    # aizpildītā sirds
-HEART_EMPTY = (150, 156, 162)  # zaudētās sirds gaišā kontūra
+HEART_EMPTY = (150, 156, 162)  # zaudētās sirds kontūra
 HUD_BAR_EMPTY = (40, 46, 52) # tukšā progresa joslas daļa
-EXPOSURE_CRITICAL = 0.75     # no šīs vērtības EXPOSURE ir "bīstams" stāvoklis
+EXPOSURE_CRITICAL = 0.75     # no šejienes EXPOSURE ir "bīstams"
 PROMPT_LINE_HEIGHT = 28      # E-uzvednes rinda tieši virs HUD joslas
 
 # --- APGAISMOJUMA UZSTĀDĪJUMI ---
-DARKNESS_ALPHA = 110        # cik tumša ir noliktava ārpus gaismas (0–255)
-GLOW_COLOR = (255, 200, 90) # lampu un lukturu siltā dzeltenā krāsa
-GLOW_GAIN = 0.35            # lampu mirdzuma spilgtums (aditīvs)
-GUARD_LIGHT_RADIUS = 150    # cik tālu sniedzas sarga lukturis (pikseļi)
-GUARD_CONE_ANGLE = 32       # luktura konusa puse leņķī (grādi)
+DARKNESS_ALPHA = 110        # cik tumši ārpus gaismas (0-255)
+GLOW_COLOR = (255, 200, 90) # lampu un lukturu siltā krāsa
+GLOW_GAIN = 0.35            # lampu mirdzuma spilgtums
+GUARD_LIGHT_RADIUS = 150    # sarga luktura attālums (pikseļi)
+GUARD_CONE_ANGLE = 32       # luktura konusa puse (grādi)
 CONE_GLOW_GAIN = 0.30       # luktura mirdzuma spilgtums
-VIGNETTE_ALPHA = 90         # cik tumšas ir ekrāna malas (0–255)
+VIGNETTE_ALPHA = 90         # cik tumšas ekrāna malas (0-255)
 # Kurjera silto dzintaru gaismas aplis (~1.5 flīzes rādiuss):
 PLAYER_LIGHT_RADIUS = 72
 PLAYER_LIGHT_CUT = 0.8          # cik spēcīgi aplis izgriež tumsu (0..1)
@@ -114,7 +111,7 @@ SCREEN_GAME_OVER = "game_over"
 SCREEN_WON = "won"
 SCREEN_LEVEL_COMPLETE = "level_complete"
 
-# Izvēļņu opcijas (navigācija: bultiņas/WASD + Enter, kursors = trijstūris)
+# Izvēļņu opcijas (bultiņas/WASD + Enter, kursors = trijstūris)
 LEVEL_NAMES = ["STORAGE", "SECURITY", "LOADING BAY"]
 PAUSE_OPTIONS = ["RESUME", "RESTART LEVEL", "SETTINGS", "MAIN MENU"]
 SETTINGS_ROWS = ["MASTER VOLUME", "MUSIC", "SOUND EFFECTS",
@@ -145,20 +142,16 @@ PROP_SPRITES = ["prop_crate_big", "prop_crate_mid",
 HUD_ICON_SIZE = 24
 
 # --- KUSTĪBAS ANIMĀCIJAS ---
-FRAME_SWITCH_MS = 120  # ik pēc tik milisekundēm mainās soļa kadrs
+FRAME_SWITCH_MS = 120  # ik pēc tik ms mainās soļa kadrs
 SWAY_DEGREES = 4       # par cik grādiem tēls "šūpojas", ejot
 
 
 def load_sprites() -> dict:
-    """Ielādē tekstūras no assets/ mapes un samazina līdz spēles izmēram.
+    """Ielādē tekstūras no assets/ un samazina līdz spēles izmēram.
 
-    Ja kādas bildes nav (piem., aizmirsa palaist cut_assets.py),
-    spēle nestrādā ar kļūdu — tā vietā zīmē parastos kvadrātus.
-
-    Papildus ielādē kustības kadru sarakstus:
-    sprites["player_frames"] un sprites["guard_frames"] satur
-    player_1..4.png / guard_1..4.png. Ja kadru bilžu nav,
-    sarakstā ir viena bilde (parastais sprites) — animācija vienkārši nerit.
+    Ja kādas bildes nav — zīmē parastos kvadrātus, spēle nestājas.
+    Papildus ielādē soļu kadru sarakstus (player_1..4.png utt.);
+    ja kadru nav, sarakstā viena bilde — animācija vienkārši nerit.
     """
     sprites = {}
     for name, size in SPRITE_SIZES.items():
@@ -184,8 +177,8 @@ def load_sprites() -> dict:
 
     # Virzienu sprites: player_down/up/left/right.png (un guard_*).
     # Ja left/right nav, ņemam pretējā virziena spoguļattēlu;
-    # ja vispār nav nevienas virzienu bildes, vārdnīcā ir None
-    # un draw_world lieto veco variantu (kadri + rotācija).
+    # ja vispār nav — vārdnīcā None un draw_world lieto veco
+    # variantu (kadri + rotācija).
     for name in ("player", "guard"):
         size = SPRITE_SIZES[name]
         directions = {}
@@ -215,8 +208,8 @@ def load_sprites() -> dict:
         else:
             sprites[name + "_dir"] = None
 
-    # Dedzinošā lampa: ja ir lamp_on.png, lieto to visām lampām;
-    # citādi — vecie varianti lamp_1..4.png pa vietām
+    # Dedzinošā lampa: ja ir lamp_on.png, lieto to visām;
+    # citādi vecie varianti lamp_1..4.png
     if sprites["lamp_on"] is not None:
         sprites["lamp_frames"] = [sprites["lamp_on"]]
     else:
@@ -232,7 +225,7 @@ def load_sprites() -> dict:
         sprites["lamp_frames"] = lamp_frames
 
     # HUD ikonas (sirds, monēta, atslēga) — katrā divas versijas:
-    # parastā un tumšā ("tukšā", piem., zaudēta dzīvība vai nav atslēgas)
+    # parastā un tumšā ("tukšā", piem., zaudēta dzīvība)
     for name, filename in (("ui_heart", "ui_heart.png"),
                            ("ui_coin", "ui_coin.png"),
                            ("ui_key", "key.png")):
@@ -255,10 +248,8 @@ def load_sprites() -> dict:
 def draw_sprite(window: pygame.Surface, sprite: pygame.Surface | None,
                 x: float, y: float, size: int,
                 fallback_color: tuple, angle: float = 0.0) -> None:
-    """Uzzīmē bildi ar augšējo kreiso stūri vietā (x, y).
-
-    Ja bildes nav — zīmē kvadrātu. angle — par cik grādiem pagriezt.
-    """
+    """Uzzīmē bildi vietā (x, y). Ja bildes nav — kvadrātu.
+    angle — par cik grādiem pagriezt."""
     if sprite is None:
         pygame.draw.rect(window, fallback_color, (x, y, size, size))
         return
@@ -270,28 +261,21 @@ def draw_sprite(window: pygame.Surface, sprite: pygame.Surface | None,
 
 
 # ============================================================
-#  APGAISMOJUMS — kā tas strādā (3 teikumi):
-#  1. Reiz programmas darbības laikā uzzīmējam "gaismas sprites" —
-#     mīkstus gradientus (aplis lampai un kurjeram, konuss lukturim).
-#  2. Katrā kadrā pār pasaules uzklājam puscaurspīdīgu melnu "tumsas"
-#     slāni un ar BLEND_RGBA_SUB no tā "izgriežam" gaišas peles tur,
-#     kur deg lampas, spīd lukturi un kur iet kurjers.
-#  3. Beigās pievienojam siltu mirdzumu (BLEND_RGB_ADD) un vinjetti
-#     (tumšākas ekrāna malas) — karte ir lasāma, bet nakts sajūta paliek.
+#  APGAISMOJUMS — kā tas strādā:
+#  Vienreiz uztaisam "gaismas sprites" (mīkstus gradientus),
+#  katrā kadrā uzklājam melnu tumsas slāni un ar BLEND_RGBA_SUB
+#  "izgriežam" gaišas vietas, kur deg lampas un lukturi.
+#  Beigās pievienojam siltu mirdzumu (ADD) un vinjetti.
 # ============================================================
 
-# Kešatmiņa gatavajiem gradientiem: gradientu rēķina VIENREIZ (tas ir
-# "dārgi" — daudz pikseļu), katrā kadrā tikai zīmē (blit) un griež (rotate).
+# Kešs gatavajiem gradientiem: gradientu rēķina VIENREIZ (tas ir dārgi),
+# katrā kadrā tikai zīmē un griež
 _light_cache: dict = {}
 
 
 def _build_radial_pixels(radius: int, alpha_func) -> pygame.Surface:
-    """Uzzīmē kvadrātveida Surface (2*radius), kura pikseļu alpha
-    nosaka funkcija alpha_func(distance, angle) -> 0..255.
-
-    distance — attālums no centra (0..radius), angle — leņķis radianos
-    (0 = pa labi). Centrā parasti alpha liela, uz malām 0 — mīksta pāreja.
-    """
+    """Kvadrātveida Surface (2*radius); katra pikseļa alpha nosaka
+    alpha_func(distance, angle). Centrā alpha liela, uz malām 0."""
     size = radius * 2
     pixels = bytearray(size * size * 4)
     i = 0
@@ -309,10 +293,7 @@ def _build_radial_pixels(radius: int, alpha_func) -> pygame.Surface:
 def _build_glow_pixels(radius: int, color: tuple, gain: float,
                        value_func) -> pygame.Surface:
     """Krāsains gradients aditīvam mirdzumam (BLEND_RGB_ADD).
-
-    Pikseļa RGB = krāsa * value_func(distance, angle)/255 * gain.
-    Zīmējot ar ADD, pikseļi paliek gaišāki un siltāki ap gaismas avotu.
-    """
+    Pikseļa RGB = krāsa * value_func(distance, angle)/255 * gain."""
     size = radius * 2
     pixels = bytearray(size * size * 4)
     i = 0
@@ -341,10 +322,7 @@ def _circle_fade(distance: float, radius: int) -> float:
 
 def get_light_circle(radius: int, strength: float = 1.0) -> pygame.Surface:
     """Gaismas pele tumsas izgriešanai (BLEND_RGBA_SUB).
-
-    Kur sprite alpha ir liela, tur tumsa "izgriežas" (paliek gaiši).
-    strength < 1 atstaj daļu tumsas — gaišs, bet ne pilnīgi spilgts laukums.
-    """
+    strength < 1 atstaj daļu tumsas — gaiši, bet ne pilnīgi spilgti."""
     key = ("circle", radius, strength)
     if key not in _light_cache:
         _light_cache[key] = _build_radial_pixels(
@@ -365,10 +343,7 @@ def get_glow_circle(radius: int, color: tuple = GLOW_COLOR,
 def _sector_value(distance: float, angle: float, radius: int,
                   half_angle_deg: float) -> float:
     """Gaismas sektora spilgtums punktā (sektors zīmēts rādot pa labi).
-
-    distance — attālums no gaismas avota, angle — leņķis no sektora
-    ass (0 = tieši gaismas virzienā), half_angle_deg — sektora puse leņķī.
-    """
+    Mazāk gaismas tālāk no avota un pie sektora malām."""
     half = math.radians(half_angle_deg)
     if distance >= radius or abs(angle) > half:
         return 0.0
@@ -392,17 +367,15 @@ def get_light_cone(radius: int) -> pygame.Surface:
 
 
 def get_rotated_cone(direction: tuple[float, float], colored: bool) -> pygame.Surface:
-    """Atgriež luktura konusu, pagrieztu konkrētā virzienā (kešots).
+    """Luktura konuss, pagriezts konkrētā virzienā (kešots).
 
-    direction — (dx, dy), piem., (1, 0) = pa labi, (0, 1) = uz leju.
-    Peldošie virzieni tiek noapaļoti līdz 5 grādiem, lai kešā neuzkrātos
-    simtiem gandrīz vienādu konusu.
-    colored=False — melna/alpha versija tumsas izgriešanai (SUB),
-    colored=True  — silti dzeltena versija mirdzumam (ADD).
+    Virzienu noapaļo līdz 5 grādiem, lai kešā neuzkrātos simtiem
+    gandrīz vienādu konusu.
+    colored=False — alpha tumsas izgriešanai (SUB), True — mirdzumam (ADD).
     """
     dx, dy = direction
-    # Konuss zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
-    # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
+    # Konuss zīmēts pa labi; pygame.rotate griež pretēji pulkstenim,
+    # tāpēc ekrānā (y uz leju) formula ir šāda:
     angle = -math.degrees(math.atan2(dy, dx))
     rounded = 5 * round(angle / 5)
     key = ("cone_rot", rounded, colored)
@@ -418,19 +391,14 @@ def get_rotated_cone(direction: tuple[float, float], colored: bool) -> pygame.Su
 
 
 def get_lamp_sector(direction: tuple[int, int], colored: bool) -> pygame.Surface:
-    """Lampas gaismas sektors, pagriezts lampas gaismas virzienā (kešots).
+    """Lampas gaismas sektors, pagriezts lampas virzienā (kešots).
 
-    Sektors ir 110° konus (LAMP_LIGHT_HALF_ANGLE * 2) ar LIGHT_RADIUS
-    rādiusu — tā pati zona, ko detekcijai lieto Level.point_in_lamp_light,
-    tāpēc redzamā gaisma un EXPOSURE zona sakrīt.
-    Lampas virzieni vienmēr ir 4 pamatvirzieni, tāpēc rotācijas leņķis
-    ir 0/90/180/270 un kešā ir tikai 4 varianti.
-    colored=False — alpha versija tumsas izgriešanai (SUB),
-    colored=True  — silti dzeltena versija mirdzumam (ADD).
+    110° konuss ar LIGHT_RADIUS rādiusu — tā pati zona, ko detekcijai
+    lieto Level.point_in_lamp_light, tāpēc redzamais un EXPOSURE sakrīt.
+    Lampas virzieni ir tikai 4, tāpēc kešā arī tikai 4 varianti.
     """
     dx, dy = direction
-    # Sektors zīmēts pa labi; pygame.rotate griež pretēji pulkstenim
-    # matemātiskajā nozīmē, tāpēc ekrānā (y uz leju) formula ir šāda:
+    # Sektors zīmēts pa labi; rotācijas formula kā konusam augstāk
     angle = -math.degrees(math.atan2(dy, dx))
     key = ("lamp_sector", angle, colored)
     if key not in _light_cache:
@@ -470,22 +438,18 @@ def get_vignette(width: int, height: int) -> pygame.Surface:
 
 
 def draw_lighting(window: pygame.Surface, state: GameState) -> None:
-    """Uzzīmē tumsu, lampu peles, sargu lukturus, kurjera apli un vinjetti.
-
-    Izsauc PĒC tam, kad visa pasaule (grīda, sprites) jau uzzīmēta.
-    """
+    """Tumsa + lampu peles + lukturi + kurjera aplis + vinjete.
+    Izsauc PĒC tam, kad visa pasaule jau uzzīmēta."""
     t = gs.TILE_SIZE
     world_w = state.level.width * t
     world_h = state.level.height * t
 
-    # 1. solis: tumsas slānis pār visu pasauli
+    # 1. tumsas slānis pār visu pasauli
     darkness = pygame.Surface((world_w, world_h), pygame.SRCALPHA)
     darkness.fill((0, 0, 0, DARKNESS_ALPHA))
 
-    # 2. solis: katrai DEGLOŠAI lampai "izgriež" gaišu sektoru tumsā.
-    # Sektors sākas pie stiprinājuma sienas iekšējās malas (lamp_light_origin)
-    # un vērsts lampas gaismas virzienā — tā pati zona kā EXPOSURE detekcijai.
-    # BLEND_RGBA_SUB atņem sprite alpha no tumsas alpha — tur paliek caurspīdīgi.
+    # 2. katrai degošai lampai "izgriež" gaišu sektoru tumsā
+    # (SUB atņem sprite alpha no tumsas alpha — tur paliek caurspīdīgi)
     for lamp_pos, off_timer in state.level.lamps.items():
         if off_timer <= 0:
             direction = state.level.lamp_info[lamp_pos][1]
@@ -494,34 +458,32 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
             darkness.blit(sector, sector.get_rect(center=origin),
                           special_flags=pygame.BLEND_RGBA_SUB)
 
-    # 3. solis: sargu lukturu konusi (centri = hitboxa centrs)
+    # 3. sargu lukturu konusi (centri = hitboxa centrs)
     for guard in state.level.guards:
         cone = get_rotated_cone(guard.facing, colored=False)
         center = (guard.x + GUARD_HIT_W / 2, guard.y + GUARD_HIT_H / 2)
         darkness.blit(cone, cone.get_rect(center=center),
                       special_flags=pygame.BLEND_RGBA_SUB)
 
-    # 4. solis: kurjera silto dzintaru gaismas aplis (seko hitboxa centram)
+    # 4. kurjera silto dzintaru gaismas aplis (seko hitboxa centram)
     player_center = (state.player_x + PLAYER_HIT_W / 2,
                      state.player_y + PLAYER_HIT_H / 2)
     player_circle = get_light_circle(PLAYER_LIGHT_RADIUS, PLAYER_LIGHT_CUT)
     darkness.blit(player_circle, player_circle.get_rect(center=player_center),
                   special_flags=pygame.BLEND_RGBA_SUB)
 
-    # 5. solis: gaisma neiet caur cietām flīzēm — pēc visu izgriezumu
-    # cietās flīzes (sienas, kastes, aizvērtas durvis) aizkrāsojam atpakaļ
-    # ar tumsu. Tā lampas gaisma neaizplūst uz blakus istabu.
-    # (Atbilst detekcijas pusei: point_in_lamp_light redzeslīnijas pārbaudei.)
+    # 5. gaisma neiet caur cietām flīzēm: cietās flīzes aizkrāsojam
+    # atpakaļ ar tumsu, citādi gaisma aizplūst uz blakus istabu
     for row in range(state.level.height):
         for col in range(state.level.width):
             if state.level.is_solid_tile(col, row):
                 darkness.fill((0, 0, 0, DARKNESS_ALPHA),
                               (col * t, row * t, t, t))
 
-    # 6. solis: uzklāj tumsu ar izgrieztajām gaismas vietām
+    # 6. uzklāj tumsu ar izgrieztajām gaismas vietām
     window.blit(darkness, (0, 0))
 
-    # 7. solis: silti mirdzumi gaismas vietās (aditīvi — gaišāk un siltāk)
+    # 7. silti mirdzumi gaismas vietās (aditīvi)
     for lamp_pos, off_timer in state.level.lamps.items():
         if off_timer <= 0:
             direction = state.level.lamp_info[lamp_pos][1]
@@ -534,13 +496,13 @@ def draw_lighting(window: pygame.Surface, state: GameState) -> None:
         center = (guard.x + GUARD_HIT_W / 2, guard.y + GUARD_HIT_H / 2)
         window.blit(cone_glow, cone_glow.get_rect(center=center),
                     special_flags=pygame.BLEND_RGB_ADD)
-    # Kurjera dzintara mirdzums (viegls, statisks gradients)
+    # Kurjera dzintara mirdzums (viegls, statisks)
     player_glow = get_glow_circle(PLAYER_LIGHT_RADIUS, PLAYER_GLOW_COLOR,
                                   PLAYER_GLOW_GAIN)
     window.blit(player_glow, player_glow.get_rect(center=player_center),
                 special_flags=pygame.BLEND_RGB_ADD)
 
-    # 7. solis: vinjette — ekrāna malas nedaudz tumšākas
+    # 8. vinjete — ekrāna malas nedaudz tumšākas
     window.blit(get_vignette(world_w, world_h), (0, 0))
 
 
@@ -556,7 +518,7 @@ FACING_NAMES = {(0, 1): "down", (0, -1): "up", (1, 0): "right", (-1, 0): "left"}
 
 
 def _facing_cardinal(facing: tuple[float, float]) -> tuple[int, int]:
-    """No sarga peldošā skata virziena atgriež tuvāko no 4 virzieniem (sprites)."""
+    """No sarga peldošā skata virziena atgriež tuvāko no 4 virzieniem."""
     fx, fy = facing
     if abs(fx) >= abs(fy):
         return (1, 0) if fx >= 0 else (-1, 0)
@@ -565,7 +527,7 @@ def _facing_cardinal(facing: tuple[float, float]) -> tuple[int, int]:
 
 def _draw_alert_icon(window: pygame.Surface, sx: float, sy: float,
                      sprite_size: int) -> None:
-    """Uzzīmē sarkanu "!" virs sarga (divi pikseļu taisnstūri: svītra + punkts)."""
+    """Sarkanais "!" virs sarga (divi taisnstūri: svītra + punkts)."""
     center_x = sx + sprite_size / 2
     top = sy - 24
     pygame.draw.rect(window, COLOR_BAD, (center_x - 3, top, 6, 14))
@@ -576,14 +538,13 @@ def _pick_character_sprite(sprites: dict, name: str, facing: tuple[int, int],
                            now: int, frame_offset: int, moving: bool) -> tuple:
     """Izvēlas bildi spēlētājam/sargam un rotācijas leņķi.
 
-    Ja ir virzienu sprites (name_dir vārdnīca) — ņem pareizo bildi,
-    rotācijas nav, paliek tikai soļu šūpošanās (to pieskaita izsaucējs).
-    Ja virzienu bilžu nav — vecais variants: soļu kadri + rotācija.
+    Ja ir virzienu sprites — ņem pareizo bildi, rotācijas nav.
+    Ja nav — vecais variants: soļu kadri + rotācija.
     Atgriež (bilde, rotācijas_leņķis).
     """
     dir_sprites = sprites.get(name + "_dir")
     if dir_sprites is not None:
-        # Diagonālei (piem., (1, -1)) nav savas bildes — rādam "down"
+        # Diagonālei nav savas bildes — rādam "down"
         return dir_sprites[FACING_NAMES.get(facing, "down")], 0.0
     frames = sprites[name + "_frames"]
     if moving:
@@ -597,16 +558,13 @@ def draw_world(window: pygame.Surface, state: GameState,
                sprites: dict, player_facing: tuple[int, int],
                player_moving: bool = False) -> None:
     """Uzzīmē visu līmeni: grīdu, sienas, lampas, monētas, spēlētāju, sargus.
-
-    player_moving — vai spēlētājs šobrīd kustas (ja True, rit soļu
-    animācija un viegla šūpošanās; stāvot rāda 1. kadru).
-    """
+    player_moving — ja True, rit soļu animācija un šūpošanās."""
     level = state.level
     t = gs.TILE_SIZE
-    # Pašreizējais laiks milisekundēs — no tā rēķina animācijas kadru
+    # Pašreizējais laiks ms — no tā rēķina animācijas kadru
     now = pygame.time.get_ticks()
 
-    # Grīda (visi lauciņi, kas nav sienas) un sienas
+    # Grīda un sienas
     for row in range(level.height):
         for col in range(level.width):
             if (col, row) in level.walls:
@@ -627,13 +585,10 @@ def draw_world(window: pygame.Surface, state: GameState,
         dx, dy = level.door_pos
         draw_sprite(window, sprites["door"], dx * t, dy * t, t, COLOR_DOOR)
 
-    # Lampas: korpuss stiprināts UZ sienas — zīmējam pie sienas iekšējās
-    # malas (level.lamp_light_origin), nevis grīdas flīzes centrā, un
-    # pagriežam pēc gaismas virziena (sprites zīmēts "karājas no augšas,
-    # spīd uz leju" — tāpēc der tieši FACING_ANGLES leņķi).
-    # ON un OFF sprites zīmē vienādā punktā ar vienādu pagriezienu,
-    # tāpēc lampa nepārvietojas, pārslēdzoties.
-    # Zīmējam PĒC sienu tekstūrām, lai siena korpusu neaizsegtu.
+    # Lampas: korpuss zīmēts pie sienas iekšējās malas (lamp_light_origin),
+    # pagriezts gaismas virzienā. ON un OFF zīmē vienādā punktā,
+    # tāpēc lampa nepārvietojas, pārslēdzoties. Zīmējam PĒC sienām,
+    # lai siena korpusu neaizsegtu.
     lamp_frames = sprites["lamp_frames"]
     for lamp_index, (lamp_pos, off_timer) in enumerate(level.lamps.items()):
         if off_timer <= 0:
@@ -653,35 +608,34 @@ def draw_world(window: pygame.Surface, state: GameState,
             rotated = pygame.transform.rotate(lamp, angle) if angle else lamp
             window.blit(rotated, rotated.get_rect(center=origin))
 
-    # Dekoratīvie šķēršļi (kastes/mucas) — kartē apzīmēti ar 'x'
-    # Kuras kastes kur — izvēlamies pēc lauciņa koordinātām, lai vienmēr vienādi
+    # Dekoratīvie šķēršļi ('x' kartē)
+    # Kuras kastes kur — izvēlamies pēc koordinātām, lai vienmēr vienādi
     for col, row in level.props:
         prop_name = PROP_SPRITES[(col * 7 + row * 13) % len(PROP_SPRITES)]
         draw_sprite(window, sprites[prop_name], col * t, row * t, t, COLOR_WALL)
 
-    # Slēptuves (metāla skapīši) — kartē apzīmētas ar 'H', flīze paliek brīva
+    # Slēptuves ('H' kartē, flīze paliek brīva)
     for col, row in level.hideouts:
         draw_sprite(window, sprites["hideout"], col * t, row * t, t, UI_LINE)
 
-    # Sūtījums (misijas objekts) ar vieglu pulsējošu mirdzumu, kamēr nav paņemts
+    # Sūtījums ar vieglu pulsējošu mirdzumu, kamēr nav paņemts
     if level.package_pos is not None and not level.package_taken:
         pcol, prow = level.package_pos
         draw_sprite(window, sprites["package"],
                     pcol * t + 11, prow * t + 11, 26, UI_ACCENT)
-        # Mirdzums: spilgtums elpo ar sinusa viļņi
-        # (noapaļots, lai gaismas kešā neuzkrātos simtiem variantu)
+        # Mirdzums elpo ar sinusa viļņi
+        # (noapaļots, lai kešā neuzkrātos simtiem variantu)
         pulse = round(0.25 + 0.15 * math.sin(now * 0.006), 2)
         glow = get_glow_circle(30, UI_ACCENT, pulse)
         center = (pcol * t + t // 2, prow * t + t // 2)
         window.blit(glow, glow.get_rect(center=center),
                     special_flags=pygame.BLEND_RGB_ADD)
 
-    # Sargi (pagriežas skata virzienā; brīdinājuma laikā stāv uz vietas).
-    # guard.x/.y ir sarga HITBOXA augšējais kreisais stūris; tēlu
-    # zīmē ar "kājām uz hitboxa" (skat. sprite_pos).
+    # Sargi (pagriežas skata virzienā; brīdinājuma laikā stāv).
+    # guard.x/.y ir hitboxa stūris; tēlu zīmē ar "kājām uz hitboxa".
     for guard in level.guards:
         guard_dir = _facing_cardinal(guard.facing)
-        # Nobīde no sarga pozīcijas, lai visi sargi neietu sinhroni
+        # Nobīde, lai visi sargi neietu sinhroni
         offset = (int(guard.x) + int(guard.y)) // 10
         sprite, angle = _pick_character_sprite(
             sprites, "guard", guard_dir, now, offset, moving=guard.moving)
@@ -691,8 +645,7 @@ def draw_world(window: pygame.Surface, state: GameState,
         draw_sprite(window, sprite, sx, sy, GUARD_SPRITE,
                     COLOR_GUARD, angle + sway)
 
-    # Spēlētājs (kurjers). state.player_x/.y ir hitboxa augšējais kreisais
-    # stūris; tēls stāv uz hitboxa apakšas, centrēts horizontāli.
+    # Spēlētājs (kurjers): tēls stāv uz hitboxa apakšas, centrēts
     if player_moving:
         # Soļu šūpošanās: sprite viegli griežas pa labi/kreisi (sinusa vilnis)
         sway = SWAY_DEGREES * math.sin(now * 0.02)
@@ -703,7 +656,7 @@ def draw_world(window: pygame.Surface, state: GameState,
     sx, sy = sprite_pos(state.player_x, state.player_y,
                         PLAYER_HIT_W, PLAYER_HIT_H, PLAYER_SPRITE)
     if state.hidden and sprite is not None:
-        # Paslēpies slēptuvē: kurjers puscaurspīdīgs (alpha ~70)
+        # Paslēpies slēptuvē: kurjers puscaurspīdīgs
         sprite = sprite.copy()
         sprite.set_alpha(70)
     draw_sprite(window, sprite, sx, sy, PLAYER_SPRITE,
@@ -713,8 +666,8 @@ def draw_world(window: pygame.Surface, state: GameState,
     # izņemot vietas, kur deg lampas, spīd lukturi un iet kurjers
     draw_lighting(window, state)
 
-    # Sarkanais "!" virs sarga zīmējam PĒC tumsas slāņa, lai ikona
-    # paliktu spilgta arī tumsā (tā ir UI zīme, ne pasaules daļa)
+    # Sarkanais "!" virs sarga zīmējam PĒC tumsas, lai paliktu
+    # spilgts arī tumsā (tā ir UI zīme, ne pasaules daļa)
     for guard in level.guards:
         if guard.alert_icon_timer > 0:
             sx, sy = sprite_pos(guard.x, guard.y, GUARD_HIT_W, GUARD_HIT_H,
@@ -748,10 +701,8 @@ def draw_top_bar(window: pygame.Surface, state: GameState,
 
 
 def load_hud_fonts() -> dict:
-    """Ielādē HUD joslas fontus no assets/fonts/ (nokopēts Windows fonts).
-
-    Ja fails pazudis — krītam atpakaļ uz sistēmas fontu, lai spēle nestātos.
-    """
+    """HUD fonti no assets/fonts/ (nokopēts Windows fonts).
+    Ja fails pazudis — sistēmas fonts, lai spēle nestātos."""
     if os.path.exists(HUD_FONT_PATH):
         return {
             "title": pygame.font.Font(HUD_FONT_PATH, HUD_TITLE_SIZE),
@@ -765,11 +716,8 @@ def load_hud_fonts() -> dict:
 
 def _draw_heart(window: pygame.Surface, cx: int, cy: int, size: int,
                 filled: bool) -> None:
-    """Viena sirds (~size px): divi apļi augšā un rombs apakšā.
-
-    filled=True — aizpildīta sarkana (atlikusi dzīvība);
-    False — tikai gaiša kontūra (zaudēta dzīvība).
-    """
+    """Viena sirds: divi apļi augšā un rombs apakšā.
+    filled=True — sarkana (atlikusi dzīvība), False — tikai kontūra."""
     r = size // 4 + 1                      # apļu rādiuss
     color = HEART_RED if filled else HEART_EMPTY
     outline = 0 if filled else 2           # 0 = aizpildīts, 2 = tikai kontūra
@@ -782,7 +730,7 @@ def _draw_heart(window: pygame.Surface, cx: int, cy: int, size: int,
 
 def _draw_warning_triangle(window: pygame.Surface, cx: int, cy: int,
                            color: tuple) -> None:
-    """Brīdinājuma trijstūris ar tumšu "!" iekšā (zīmēts ar polygon)."""
+    """Brīdinājuma trijstūris ar tumšu "!" iekšā."""
     r = 10
     pygame.draw.polygon(window, color,
                         [(cx, cy - r), (cx - r + 1, cy + r - 2),
@@ -799,7 +747,7 @@ def _draw_section_title(window: pygame.Surface, fonts: dict, text: str,
 
 def _draw_hud_health(window: pygame.Surface, state: GameState,
                      fonts: dict, bounds: tuple, hud_top: int) -> None:
-    """HEALTH sadaļa: 3 lielas sirdis (pilnas sarkanas, zaudētās — kontūra)."""
+    """HEALTH sadaļa: 3 sirdis (pilnas sarkanas, zaudētās — kontūra)."""
     x0, _ = bounds
     _draw_section_title(window, fonts, "HEALTH", x0 + HUD_PADDING,
                         hud_top + 12)
@@ -813,7 +761,7 @@ def _draw_hud_health(window: pygame.Surface, state: GameState,
 def _draw_hud_coins(window: pygame.Surface, state: GameState,
                     fonts: dict, sprites: dict, bounds: tuple,
                     hud_top: int) -> None:
-    """COINS sadaļa: zelta monētas ikona + lielā vērtība "2 / 5"."""
+    """COINS sadaļa: monētas ikona + lielā vērtība "2 / 5"."""
     x0, _ = bounds
     _draw_section_title(window, fonts, "COINS", x0 + HUD_PADDING,
                         hud_top + 12)
@@ -835,12 +783,8 @@ def _draw_hud_coins(window: pygame.Surface, state: GameState,
 
 def _draw_hud_lamp(window: pygame.Surface, state: GameState,
                    fonts: dict, bounds: tuple, hud_top: int) -> None:
-    """LAMP sadaļa: taustiņa rāmītis SPACE + READY vai atlikušais laiks.
-
-    Kad slēdzis uzlādējas (cooldown), zem rāmīša ir plāna josla,
-    kas piepildās, tuvojoties gatavībai. Rāmīša un teksta pozīcijas
-    ir fiksētas — nekas nepārbīdās, mainoties stāvoklim.
-    """
+    """LAMP sadaļa: SPACE taustiņa rāmītis + READY vai atlikušais laiks.
+    Pozīcijas fiksētas — nekas nepārbīdās, mainoties stāvoklim."""
     x0, x1 = bounds
     _draw_section_title(window, fonts, "LAMP", x0 + HUD_PADDING, hud_top + 12)
     ready = state.lamp_cooldown <= 0
@@ -862,7 +806,7 @@ def _draw_hud_lamp(window: pygame.Surface, state: GameState,
                       key_rect.centery - img.get_height() // 2))
 
     if not ready:
-        # Plāna uzlādes josla (~10 px): piepildās, tuvojoties gatavībai
+        # Plāna uzlādes josla: piepildās, tuvojoties gatavībai
         bar_y = key_rect.bottom + 8
         bar_w = x1 - HUD_PADDING - key_rect.x
         pygame.draw.rect(window, HUD_BAR_EMPTY,
@@ -875,12 +819,11 @@ def _draw_hud_lamp(window: pygame.Surface, state: GameState,
 
 def _draw_hud_exposure(window: pygame.Surface, state: GameState,
                        fonts: dict, bounds: tuple, hud_top: int) -> None:
-    """EXPOSURE sadaļa: procenti + plata progresa josla + brīdinājums.
+    """EXPOSURE sadaļa: procenti + progresa josla + brīdinājums.
 
-    0%: mierīgs stāvoklis. >0%: dzintara aizpildījums + trijstūris un
-    "MOVE INTO SHADOW". >=75%: sarkans aizpildījums, sadaļai tumši
-    sarkans fons un spilgta sarkana līnija kreisajā malā.
-    Brīdinājuma vieta ir rezervēta izkārtojumā — nekas nepārbīdās.
+    >0%: dzintara aizpildījums + "MOVE INTO SHADOW".
+    >=75%: sarkans aizpildījums, tumši sarkans fons un sarkana
+    līnija kreisajā malā. Brīdinājuma vieta rezervēta izkārtojumā.
     """
     x0, x1 = bounds
     exposure = max(0.0, min(1.0, state.lamp_exposure))
@@ -926,12 +869,8 @@ def _draw_hud_exposure(window: pygame.Surface, state: GameState,
 
 def draw_hud(window: pygame.Surface, state: GameState,
              fonts: dict, sprites: dict) -> None:
-    """Uzzīmē HUD: apakšējo 4-sadaļu joslu un augšējo plāno joslu.
-
-    Apakšējā josla (HUD_HEIGHT px, pilns loga platums): HEALTH (sirdis),
-    COINS (monētas), LAMP (slēdža gatavība), EXPOSURE (gaismas risks).
-    E-uzvedne un paziņojums zīmējas plānā rindā tieši virs joslas.
-    """
+    """Apakšējā 4-sadaļu HUD josla + augšējā plānā josla.
+    E-uzvedne un paziņojums zīmējas rindā tieši virs joslas."""
     width = window.get_width()
     font = fonts["small"]
     hud_top = window.get_height() - HUD_HEIGHT
@@ -979,7 +918,7 @@ def draw_hud(window: pygame.Surface, state: GameState,
         world_h = state.level.height * gs.TILE_SIZE
         mx = (width - mission_img.get_width()) // 2
         my = world_h // 3
-        # Tumšs pamatnes aiz teksta, lai tas lasās arī gaišās vietās
+        # Tumšs pamatnes aiz teksta, lai lasās arī gaišās vietās
         back = pygame.Surface((mission_img.get_width() + 24,
                                mission_img.get_height() + 12), pygame.SRCALPHA)
         back.fill((14, 16, 20, 200))
@@ -988,11 +927,7 @@ def draw_hud(window: pygame.Surface, state: GameState,
 
 
 def interaction_prompt(state: GameState) -> str:
-    """Kuru E-darbības uzvedni rādīt HUD (tukša virkne = nekā).
-
-    Pienākot klāt sūtījumam, slēptuvei vai izejai bez sūtījuma,
-    spēlētājs redz, ko var darīt (vai kas trūkst).
-    """
+    """Kuru E-darbības uzvedni rādīt HUD (tukša virkne = nekā)."""
     if state.hidden:
         return "E EXIT HIDEOUT"
     if state.package_in_range():
@@ -1010,7 +945,7 @@ def interaction_prompt(state: GameState) -> str:
 
 
 # ============================================================
-#  INDUSTRIĀLĀ PIKSEĻU STILA EKRĀNI (izvēlnes, pauze, beigu ekrāni)
+#  EKRĀNI (izvēlnes, pauze, beigu ekrāni)
 #  Tumšs ogļu fons, krēmkrāsas teksts, viens dzeltens akcents,
 #  plānas līnijas, monospace fonts. Izvēlētais variants =
 #  dzeltens trijstūris pa kreisi + dzeltens teksts.
@@ -1019,11 +954,7 @@ def interaction_prompt(state: GameState) -> str:
 
 def draw_panel(window: pygame.Surface, panel_width: int,
                panel_height: int) -> pygame.Rect:
-    """Uzzīmē pārkares paneli ekrāna centrā un atgriež tās Rect.
-
-    Aiz paneļa ekrāns nedaudz aptumšots, pats panelis — tumši pelēks
-    ar plānu pelēku kontūru (nekādu lielu spīdīgu bloku).
-    """
+    """Pārkares panelis ekrāna centrā. Aiz paneļa ekrāns aptumšots."""
     width, height = window.get_size()
     rect = pygame.Rect(0, 0, panel_width, panel_height)
     rect.center = (width // 2, height // 2)
@@ -1037,10 +968,10 @@ def draw_panel(window: pygame.Surface, panel_width: int,
 
 def draw_cursor_triangle(window: pygame.Surface, x: int, y_center: int,
                          size: int = 12) -> None:
-    """Uzzīmē dzeltenu kursora trijstūri (rāda pa labi).
+    """Dzeltens kursora trijstūris (rāda pa labi).
 
-    Zīmējam kā daudzstūri, nevis fonta simbolu — konsolas fontā
-    trijstūra burtam reizēm nav glifi un tas rādās kā kvadrāts.
+    Zīmēts kā daudzstūris, nevis fonta simbols — konsolas fontā
+    trijstūrim reizēm nav glifa un rādās kā kvadrāts.
     """
     half = size // 2
     pygame.draw.polygon(window, UI_ACCENT,
@@ -1094,7 +1025,7 @@ def draw_menu_options(window: pygame.Surface, font: pygame.font.Font,
 
 def main_menu_options(ui: dict, state: GameState) -> list[str]:
     """Galvenās izvēlnes opcijas. CONTINUE rādam tikai tad, ja šajā
-    sesijā spēle ir sākta un pašlaik rit (var turpināt)."""
+    sesijā spēle ir sākta un pašlaik rit."""
     options = []
     if ui["game_started"] and state.status == STATUS_PLAYING:
         options.append("CONTINUE")
@@ -1125,11 +1056,8 @@ def draw_menu(window: pygame.Surface, fonts: dict, state: GameState,
 
 
 def draw_level_select(window: pygame.Surface, fonts: dict, ui: dict) -> None:
-    """Līmeņu izvēle: 01 STORAGE / 02 SECURITY / 03 LOADING BAY.
-
-    Līmenis atbloķēts, ja iepriekšējais pabeigts šajā sesijā.
-    Statuss: AVAILABLE / COMPLETED / LOCKED (bloķētais pelēks).
-    """
+    """Līmeņu izvēle ar statusiem AVAILABLE / COMPLETED / LOCKED.
+    Līmenis atbloķēts, ja iepriekšējais pabeigts šajā sesijā."""
     width, height = window.get_size()
     draw_screen_title(window, fonts, "LEVEL SELECT", height // 4 - 10)
     name_x = width // 2 - 170   # līmeņu nosaukumu kolonna (kreisi)
@@ -1141,7 +1069,7 @@ def draw_level_select(window: pygame.Surface, fonts: dict, ui: dict) -> None:
         completed = n in ui["completed_levels"]
         if completed:
             status, status_color = "COMPLETED", UI_ACCENT
-            # Ja šajā sesijā līmenis pabeigts — rādam labāko vērtējumu
+            # Ja šajā sesijā pabeigts — rādam labāko vērtējumu
             if n in ui["best_ranks"]:
                 status = f"COMPLETED  {ui['best_ranks'][n]}"
         elif unlocked:
@@ -1168,10 +1096,10 @@ def draw_level_select(window: pygame.Surface, fonts: dict, ui: dict) -> None:
 
 def draw_slider(window: pygame.Surface, fonts: dict, x: int, y: int,
                 value: int, selected: bool) -> None:
-    """Segmentēts slīdnis 0-100 (soli pa 10): 10 mazas kārbas + vērtība.
+    """Segmentēts slīdnis 0-100 (soli pa 10).
 
     Izvēlētam slīdnim vērtību rāda kā "< 70 >" — mājiens, ka
-    kreiso/labo bultiņu var spiest, lai mainītu.
+    ar bultiņām var mainīt.
     """
     seg_w, seg_h, gap = 16, 10, 4
     for i in range(10):
@@ -1187,11 +1115,8 @@ def draw_slider(window: pygame.Surface, fonts: dict, x: int, y: int,
 
 
 def draw_settings(window: pygame.Surface, fonts: dict, ui: dict) -> None:
-    """Iestatījumi: trīs skaļuma slīdņi, FULLSCREEN checkbox, CONTROLS.
-
-    Skaļuma slīdņi pagaidām tikai glabā vērtību ui["volumes"]
-    (audio sistēmas spēlē vēl nav). ESC = atpakaļ.
-    """
+    """Iestatījumi: skaļuma slīdņi, FULLSCREEN checkbox, CONTROLS.
+    Slīdņi pagaidām tikai glabā vērtību (audio sistēmas vēl nav)."""
     width, height = window.get_size()
     draw_screen_title(window, fonts, "SETTINGS", height // 4 - 20)
     label_x = width // 2 - 240
@@ -1302,17 +1227,14 @@ def draw_won(window: pygame.Surface, fonts: dict, state: GameState,
                       cx, rect.top + 205, line_height=44)
 
 
-# Zaļā krāsā, ja rekords aizgāja uz serveri; pelēkā, ja nē
+# Zaļā, ja rekords aizgāja uz serveri; pelēkā, ja nē
 SCORE_SAVED_COLOR = (90, 200, 120)
 
 
 def draw_score_status(window: pygame.Surface, fonts: dict, ui: dict,
                       cx: int, y: int) -> None:
     """Rāda vienu rindu par rekorda nosūtīšanu serverim (CAUGHT/WIN ekrāni).
-
-    Rāda tikai tad, kad sūtīšana jau notikusi (ui["score_result"]):
-    True -> "SCORE SAVED TO SERVER" (zaļa), False -> "SERVER NOT AVAILABLE".
-    """
+    True -> "SCORE SAVED TO SERVER", False -> "SERVER NOT AVAILABLE"."""
     result = ui.get("score_result")
     if result is None:
         return
@@ -1332,11 +1254,7 @@ def draw_score_status(window: pygame.Surface, fonts: dict, ui: dict,
 def handle_key(key: int, current_screen: str, state: GameState,
                ui: dict) -> str:
     """Apstrādā vienu taustiņa nospiešanu un atgriež jauno ekrānu.
-
-    ui["selection"] ir izvēlnes kursora pozīcija (to šeit arī maina).
-    Pārējie ui lauki: settings_from, volumes, fullscreen, game_started,
-    completed_levels — skat. main().
-    """
+    ui["selection"] ir izvēlnes kursora pozīcija (to šeit arī maina)."""
     sel = ui["selection"]
 
     if current_screen == SCREEN_MENU:
@@ -1415,7 +1333,7 @@ def handle_key(key: int, current_screen: str, state: GameState,
             ui["selection"] = 0
             return SCREEN_MENU
         if key == pygame.K_SPACE:
-            # Space = 2. mehānika: izslēgt tuvāko lampu (viena darbība)
+            # Space = izslēgt tuvāko lampu (viena darbība)
             state.update(0.0, 0, 0, True, False)
         if key == pygame.K_e:
             # E = paņemt atslēgu / atvērt durvis (viena darbība)
@@ -1510,7 +1428,7 @@ def handle_key(key: int, current_screen: str, state: GameState,
 
 
 def remember_rank(ui: dict, state: GameState) -> None:
-    """Saglabā labāko vērtējuma burtu līmenim sesijas atmiņā (ui["best_ranks"])."""
+    """Saglabā labāko vērtējuma burtu līmenim sesijas atmiņā."""
     rank = state.level_stats.get("rank")
     if rank is None:
         return
@@ -1527,10 +1445,8 @@ PLAYER_NAME_FILE = "player_name.txt"  # šeit atceramies pēdējo vārdu
 def ask_credentials() -> dict:
     """Pajautā vārdu un paroli konsolē PIRMS pygame.init().
 
-    Tas ir apzināti vienkārši (prakses slaidu pieeja): spēle sākas
-    no termināļa, tāpēc prasām turpat ar input().
-    - Ja konts ar šādu vārdu serverī vēl nav — tas tiek izveidots.
-    - Ja konts ir — parole tiek pārbaudīta; nepareiza = jautā vēlreiz.
+    Apzināti vienkārši: spēle sākas no termināļa, tāpēc prasām turpat.
+    - Ja konts nav — serveris to izveido; ja ir — pārbauda paroli.
     - Tukša parole = spēle bez konta (rekords netiks sūtīts).
     - Vārdu saglabājam player_name.txt, lai nākamreiz piedāvātu to pašu.
     Headless režīmā (testi) nejautājam neko — tur neviens nevar atbildēt.
@@ -1577,11 +1493,9 @@ def reset_score_flag(ui: dict) -> None:
 def send_score_to_server(ui: dict, state: GameState, player: dict) -> None:
     """Nosūta rekordu serverim VIENU REIZI, kad spēle beigusies.
 
-    Tokens parasti jau ir no spēles sākuma (ask_credentials). Ja torea-
-    dā serveris bija izslēgts, šeit mēģinām ielogoties vēlreiz — tāpēc
-    spēle nesasalst palaišanas brīdī (timeout=3 s ir pieņemama pauze
-    beigu ekrānā). api_client pats noķer visas kļūdas — spēle nekad
-    nenokrīt servera dēļ.
+    Tokens parasti jau ir no spēles sākuma. Ja toreiz serveris bija
+    izslēgts, šeit mēģinām vēlreiz — tāpēc spēle nesasalst palaišanas
+    brīdī. api_client pats noķer visas kļūdas — spēle nekad nenokrīt.
     """
     if ui["score_sent"]:
         return
@@ -1609,7 +1523,7 @@ def main() -> None:
     world_height = state.level.height * gs.TILE_SIZE
     window = pygame.display.set_mode((world_width, world_height + HUD_HEIGHT))
     clock = pygame.time.Clock()
-    # Industriālā stila ekrāniem — monospace fonts
+    # Ekrāniem — monospace fonts
     fonts = {
         "font": pygame.font.SysFont("consolas", 20),
         "big": pygame.font.SysFont("consolas", 44, bold=True),
@@ -1636,8 +1550,8 @@ def main() -> None:
     player_moving = False   # vai spēlētājs kustas (animācijai)
 
     while True:
-        # dt = cik sekundes pagāja kopš iepriekšējā kadra (lai ātrums
-        # nebūtu atkarīgs no datora jaudas)
+        # dt = sekundes kopš iepriekšējā kadra (lai ātrums
+        # nebūtu atkarīgs no datora ātruma)
         dt = clock.tick(FPS) / 1000.0
 
         # --- 1. solis: ievade (taustiņi un loga aizvēršana) ---

@@ -1,4 +1,4 @@
-"""Uzzīmē katru līmeni PNG failā (bez loga), lai pārbaudītu kartes vizuāli."""
+"""Uzzīmē katru līmeni PNG failā (bez loga) — kartes vizuālai pārbaudei."""
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 

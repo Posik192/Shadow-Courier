@@ -1,9 +1,8 @@
-"""Ceļa meklēšana pa kartes lauciņiem ar vienkāršu BFS.
+"""Ceļa meklēšana pa kartes lauciņiem ar BFS.
 
-Karte ir maza (24x16 lauciņi), tāpēc pietiek ar platuma meklēšanu
-(BFS) — sarežģītāks A* algoritms šeit nav vajadzīgs. Abas funkcijas
-saņem `is_solid(col, row)` funkciju (Level.is_solid_tile), tāpēc
-šis fails pats nezina neko par sienām, kastēm vai durvīm.
+Karte ir maza (24x16), tāpēc pietiek ar parasto platuma meklēšanu,
+A* šeit nevajag. Abas funkcijas saņem is_solid(col, row) no ārpuses,
+tāpēc fails pats nezina neko par sienām un durvīm.
 """
 
 from collections import deque
@@ -13,7 +12,7 @@ NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
 def reachable_tiles(is_solid, start: tuple[int, int]) -> set[tuple[int, int]]:
-    """Atgriež visus lauciņus, kurus var sasniegt no starta (BFS plūdmaiņa)."""
+    """Visi lauciņi, kurus var sasniegt no starta (BFS plūdmaiņa)."""
     seen = {start}
     queue = deque([start])
     while queue:
@@ -29,10 +28,8 @@ def reachable_tiles(is_solid, start: tuple[int, int]) -> set[tuple[int, int]]:
 
 def find_path(is_solid, start: tuple[int, int],
               goal: tuple[int, int]) -> list[tuple[int, int]] | None:
-    """Atrod īsāko ceļu no starta uz mērķi (lauciņu saraksts, abi ieskaitot).
-
-    Ja mērķis ir ciets lauciņš vai nav sasniedzams — atgriež None.
-    """
+    """Īsākais ceļš no starta uz mērķi (lauciņu saraksts, abi ieskaitot).
+    Ja mērķis ciets vai nav sasniedzams — None."""
     if start == goal:
         return [start]
     if is_solid(*goal):

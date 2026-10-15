@@ -2,21 +2,19 @@
 
 Palaišana no projekta mapes:
     uvicorn api.main:app --reload
-Pēc tam pārlūkā atver http://localhost:8000/docs — tur visus
-endpointus var izmēģināt bez spēles.
+Pēc tam pārlūkā http://localhost:8000/docs — tur visu var izmēģināt.
 
 Galvenie endpointi:
-    POST /register              jauns spēlētājs (201, vai 400 ja vārds aizņemts)
-    POST /login                 parole -> tokens (200, vai 401)
+    POST /register              jauns spēlētājs (201 / 400 ja vārds aizņemts)
+    POST /login                 parole -> tokens (200 / 401)
     POST /scores                saglabā rekordu (201, prasa token galveni)
-    GET  /scores/top            10 labākie rekordi (200)
-    GET  /players/{name}/stats  spēlētāja statistika (200, vai 404)
+    GET  /scores/top            10 labākie (200)
+    GET  /players/{name}/stats  statistika (200 / 404)
 
-Mājaslapas (Jinja2 veidnes no web/ mapes):
-    GET  /                      līderu tabula (top 10, no tās pašas datubāzes)
-    GET  /players/{name}        spēlētāja profils (404, ja nav)
+Mājaslapas (Jinja2 no web/ mapes):
+    GET  /                      līderu tabula
+    GET  /players/{name}        spēlētāja profils
     GET  /rules                 spēles noteikumi
-    /static/...                 statiskie faili (style.css u.c.)
 """
 
 import hashlib
@@ -30,37 +28,37 @@ from pydantic import BaseModel, Field
 
 from api.db import get_connection, get_top_scores, get_player_page
 
-# --- Ierobežojumi ievaddatiem (lielāki skaitļi vai garāki vārdi nedrīkst) ---
+# --- Ierobežojumi ievaddatiem ---
 MAX_NAME_LEN = 20
 MAX_PASSWORD_LEN = 50
 
 app = FastAPI(title="Shadow Courier API")
 
-# Statiskie faili (style.css u.c.) un Jinja veidnes — abas no web/ mapes
+# Statiskie faili un Jinja veidnes — abas no web/ mapes
 app.mount("/static", StaticFiles(directory="web"), name="static")
 templates = Jinja2Templates(directory="web")
 
 
 class UserIn(BaseModel):
-    """Dati, ko sūta reģistrācijai un pieteikšanai."""
+    """Dati reģistrācijai un pieteikšanai."""
 
     name: str = Field(min_length=1, max_length=MAX_NAME_LEN)
     password: str = Field(min_length=1, max_length=MAX_PASSWORD_LEN)
 
 
 class ScoreIn(BaseModel):
-    """Dati, ko sūta rekorda saglabāšanai (vārds nāk no tokena)."""
+    """Dati rekorda saglabāšanai (vārds nāk no tokena)."""
 
     score: int = Field(ge=0)
 
 
 def hash_password(password: str) -> str:
-    """Pārveido paroli par hash — paroli nekad neglabājam tādu, kāda tā ir."""
+    """Paroli glabājam tikai kā hash, nekad pašu paroli."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 
 def player_by_token(conn, token: str) -> str | None:
-    """Atrod spēlētāja vārdu pēc tokena. Ja nav — None."""
+    """Spēlētāja vārds pēc tokena. Ja nav — None."""
     row = conn.execute(
         "SELECT name FROM players WHERE token = ?", (token,)).fetchone()
     return row[0] if row else None
@@ -116,13 +114,13 @@ def add_score(item: ScoreIn, token: str = Header()) -> dict:
 
 @app.get("/scores/top")
 def top_scores() -> list[dict]:
-    """Atgriež 10 labākos rekordus (lielākie pirmie)."""
+    """10 labākie rekordi (lielākie pirmie)."""
     return get_top_scores(10)
 
 
 @app.get("/players/{name}/stats")
 def player_stats(name: str) -> dict:
-    """Spēlētāja statistika: spēļu skaits un labākais rezultāts (404, ja nav)."""
+    """Spēļu skaits un labākais rezultāts (404, ja nav tāda spēlētāja)."""
     with get_connection() as conn:
         exists = conn.execute(
             "SELECT 1 FROM players WHERE name = ?", (name,)).fetchone()
@@ -135,8 +133,8 @@ def player_stats(name: str) -> dict:
 
 
 # --- Mājaslapas (Jinja2 veidnes) ---
-# Šie maršruti ir PĒC API maršrutiem, lai /players/{name}/stats
-# netiktu uztverts kā profila lapa ar vārdu "{name}/stats".
+# Šiem jābūt PĒC API maršrutiem — citādi /players/{name}/stats
+# FastAPI uztvertu kā profila lapu ar dīvainu vārdu.
 
 @app.get("/", response_class=HTMLResponse)
 def leaderboard_page(request: Request) -> HTMLResponse:
@@ -153,7 +151,7 @@ def rules_page(request: Request) -> HTMLResponse:
 
 @app.get("/players/{name}", response_class=HTMLResponse)
 def player_page(request: Request, name: str) -> HTMLResponse:
-    """Spēlētāja profils pārlūkā. Ja spēlētāja nav — 404 ar vienkāršu ziņu."""
+    """Spēlētāja profils pārlūkā (404, ja nav)."""
     player = get_player_page(name)
     if player is None:
         raise HTTPException(404, "Spēlētājs nav atrasts")

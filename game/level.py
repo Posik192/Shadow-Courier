@@ -1,19 +1,18 @@
 """Līmeņu kartes un Level klase.
 
-Karte ir saraksts ar teksta rindām. Katrs simbols nozīmē vienu lauciņu:
-    # - siena (nevar iet cauri)
-    . - grīda (var iet)
-    P - spēlētāja sākuma vieta
-    C - monēta (+10 punkti)
-    K - atslēga (+25 punkti, vajadzīga durvju atvēršanai)
+Karte ir teksta rindas, katrs simbols = viens lauciņš:
+    # - siena
+    . - grīda
+    P - spēlētāja starts
+    C - monēta (+10)
+    K - atslēga (+25, vajadzīga durvīm)
     D - durvis (atver ar E, ja ir atslēga)
-    E - izeja (līmeņa beigas)
-    L - lampa (apgaismo laukumu ap sevi)
-    x - kaste vai muca (dekoratīvs šķērslis, caur nevar iet)
-    M - slepenais sūtījums (misijas objekts; bez tā izeja nedarbojas)
-    H - slēptuve (metāla skapītis; ar E var paslēpties, flīze paliek brīva)
-    G - sargs, kas kustas horizontāli
-    V - sargs, kas kustas vertikāli
+    E - izeja
+    L - lampa (apgaismo apkārtni)
+    x - kaste/muca (šķērslis, caur nevar)
+    M - sūtījums (bez tā izeja nedarbojas)
+    H - slēptuve (ar E var paslēpties, flīze paliek brīva)
+    G - sargs (horizontālais), V - sargs (vertikālais)
 """
 
 from game.guard import Guard
@@ -22,14 +21,11 @@ from game.settings import (TILE_SIZE, GUARD_SPEEDS,
                            PLAYER_HIT_W, PLAYER_HIT_H, FEET_MARGIN)
 import math
 
-# --- TRĪS LĪMEŅU KARTES (24x16, grūtība aug: vairāk sargu, lampu un sienu) ---
+# --- TRĪS LĪMEŅU KARTES (24x16, grūtība aug) ---
 
 LEVEL_MAPS = [
-    # 1. līmenis — viegls: liela noliktavas zāle ar kastu grupām, 2 sargi
-    # (viens patrulē galveno zāli, otrs austrumu spārnā pie durvīm),
-    # 6 lampas pie eju krustojumiem, 5 monētas.
-    # Atslēga dienvidrietumu istabā (ieleja (3,11)), sūtījums —
-    # dienvidu vidējā istabā (ieleja (12,11)); katrai istabai sava lampa.
+    # 1. līmenis: liela noliktavas zāle, 2 sargi, 6 lampas, 5 monētas.
+    # Atslēga ZR istabā, sūtījums D vidējā istabā — katrai sava lampa.
     [
         "########################",
         "#P......#.....C#.xx....#",
@@ -48,12 +44,8 @@ LEVEL_MAPS = [
         "#.........M.....C..#...#",
         "########################",
     ],
-    # 2. līmenis — vidējs: vairākas telpas, garas patruļu līnijas,
-    # 3 sargi (divi vertikālie sargā ZA un austrumu koridorus, viens
-    # horizontālais lielajā dienvidu zālē), 5 lampas, 5 monētas.
-    # Atslēga ZA istabā (vienīgā ieleja (18,5), lampa (20,1) virs tās),
-    # sūtījums dienvidu zālē pie lampas (22,12). Izejas telpa
-    # dienvidrietumos aiz durvīm.
+    # 2. līmenis: vairākas telpas, 3 sargi (2 vertikālie + 1 horizontālais),
+    # 5 lampas, 5 monētas. Izejas telpa ZR aiz durvīm.
     [
         "########################",
         "#P....#...C...#.....L..#",
@@ -72,12 +64,8 @@ LEVEL_MAPS = [
         "#...#..................#",
         "########################",
     ],
-    # 3. līmenis — grūts: blīva noliktava ar daudzām kastu grupām,
-    # 4 sargi (garo zāli sargā horizontālais, vēl trīs ZA, austrumu
-    # un dienvidu rajonos), 7 lampas, 5 monētas.
-    # Sūtījums dienvidrietumu istabā (ieleja (3,10), lampa (1,11)),
-    # atslēga dienvidu vidējā istabā (ieleja (18,10), lampa (11,14)) —
-    # divas atsevišķas istabas, katra ar savu lampu. Izeja aiz durvīm.
+    # 3. līmenis: blīvāka noliktava, 4 sargi, 7 lampas, 5 monētas.
+    # Sūtījums un atslēga divās atsevišķās istabās, katrai sava lampa.
     [
         "########################",
         "#P.....#......#........#",
@@ -110,18 +98,18 @@ class Level:
 
         # Lauciņu kopas: (kolonna, rinda)
         self.walls: set[tuple[int, int]] = set()
-        self.props: set[tuple[int, int]] = set()  # kastes/mucas ('x') — cieta šķēršļi
+        self.props: set[tuple[int, int]] = set()  # kastes/mucas ('x')
         self.coins: set[tuple[int, int]] = set()
-        self.lamps: dict[tuple[int, int], float] = {}  # lauciņš -> cik ilgi vēl izslēgta
+        self.lamps: dict[tuple[int, int], float] = {}  # flīze -> cik ilgi izslēgta
         self.guards: list[Guard] = []
         self.key_pos: tuple[int, int] | None = None
         self.door_pos: tuple[int, int] | None = None
         self.door_open = False
         self.exit_pos: tuple[int, int] = (0, 0)
-        self.package_pos: tuple[int, int] | None = None  # sūtījuma flīze (simbols M)
-        self.package_taken = False   # vai sūtījums jau paņemts
-        self.hideouts: set[tuple[int, int]] = set()  # slēptuves (simbols H, flīze paliek brīva)
-        self.player_start: tuple[int, int] = (0, 0)  # pikseļos (kreisais augšējais stūris)
+        self.package_pos: tuple[int, int] | None = None  # sūtījuma flīze (M)
+        self.package_taken = False
+        self.hideouts: set[tuple[int, int]] = set()  # slēptuves (H)
+        self.player_start: tuple[int, int] = (0, 0)  # pikseļos
 
         guard_speed = GUARD_SPEEDS[level_number - 1]
 
@@ -141,16 +129,16 @@ class Level:
                 elif symbol == "E":
                     self.exit_pos = pos
                 elif symbol == "L":
-                    self.lamps[pos] = 0.0  # 0.0 nozīmē: lampa deg
+                    self.lamps[pos] = 0.0  # 0.0 = lampa deg
                 elif symbol == "M":
                     self.package_pos = pos
                 elif symbol == "H":
                     # Slēptuve NAV cieta flīze — uz tās var uzkāpt,
-                    # interakcija notiek ar tuvuma rādiusu (skat. game_state)
+                    # interakcija ar tuvuma rādiusu (skat. game_state)
                     self.hideouts.add(pos)
                 elif symbol == "P":
-                    # Sākuma vieta ir hitboxa augšējais kreisais stūris:
-                    # centrēts horizontāli, tuvu lauciņa apakšai ("kājas")
+                    # Starts = hitboxa augšējais kreisais stūris:
+                    # centrēts horizontāli, tuvu lauciņa apakšai
                     self.player_start = (
                         col_index * TILE_SIZE + (TILE_SIZE - PLAYER_HIT_W) // 2,
                         row_index * TILE_SIZE + TILE_SIZE - PLAYER_HIT_H - FEET_MARGIN,
@@ -160,29 +148,22 @@ class Level:
                 elif symbol == "V":
                     self.guards.append(Guard(col_index, row_index, False, guard_speed))
 
-        # Lampu stiprinājumi: katrai lampai atrodam sienu, uz kuras tā
-        # piestiprināta, un gaismas virzienu (prom no sienas, telpā).
-        # lamp_info[lampas_flīze] = (sienas_flīze, (dx, dy))
+        # Katrai lampai atrodam sienu, uz kuras tā stiprināta,
+        # un gaismas virzienu (prom no sienas telpā)
         self.lamp_info: dict[tuple[int, int], tuple] = {}
         for lamp in self.lamps:
             self.lamp_info[lamp] = self._compute_lamp_mount(*lamp)
 
     def _compute_lamp_mount(self, col: int, row: int) -> tuple:
-        """Izvēlas, uz kuras kaimiņu sienas lampa ir stiprināta.
+        """Atgriež (sienas flīze, gaismas virziens) — gaisma prom no sienas.
 
-        Atgriež (sienas_flīze, gaismas_virziens). Gaismas virziens ir
-        pretējs sienas virzienam: siena virs lampas -> gaisma uz leju (0,1),
-        siena apakšā -> uz augšu (0,-1), siena pa kreisi -> pa labi (1,0),
-        siena pa labi -> pa kreisi (-1,0).
-
-        Ja lampai ir VAIRĀKAS sienas kaimiņos (stūris), izvēlamies to sienu,
-        kuras gaismas virzienā ir garākā brīvā flīžu līnija — tā gaisma
-        spīd telpas dziļumā (parasti tieši uz priekšmetu), nevis stūrī.
-        Pie vienāda garuma uzvar agrākā kandidātu secībā: vispirms
-        horizontālās sienas (virs/apakšā), tad vertikālās (kreisā/labā).
+        Ja lampai vairākas sienas kaimiņos (stūris), ņem to, kuras
+        virzienā ir garākā brīvā flīžu līnija — tā gaisma spīd telpas
+        dziļumā, nevis stūrī. Pie vienāda garuma horizontālās sienas
+        (virs/apakšā) iet pirmās.
         """
         candidates = []
-        for dc, dr in ((0, -1), (0, 1), (-1, 0), (1, 0)):  # horizontālās sienas pirmās
+        for dc, dr in ((0, -1), (0, 1), (-1, 0), (1, 0)):  # horizontālās pirmās
             wall = (col + dc, row + dr)
             if wall in self.walls:
                 candidates.append((wall, (-dc, -dr)))
@@ -197,15 +178,13 @@ class Level:
             if length > best_len:
                 best, best_len = (wall, (dx, dy)), length
         if best is None:
-            # Lampai nav nevienas sienas kaimiņos (karšu tests to aizliedz) —
-            # rezervē: spīd uz leju, stiprinājuma siena nav zināma.
+            # Nav nevienas sienas kaimiņos (karšu tests to aizliedz) — rezervē uz leju
             return (None, (0, 1))
         return best
 
     def lamp_light_origin(self, lamp_pos: tuple[int, int]) -> tuple[float, float]:
-        """Gaismas sākumpunkts pikseļos — pie stiprinājuma sienas IEKŠĒJĀS
-        malas telpas pusē (ne flīzes centrā), lai siena nenobloķētu pašu staru.
-        Punkts atrodas tieši uz kopējās malas starp lampas un sienas flīzi."""
+        """Gaismas sākumpunkts pie sienas iekšējās malas (ne flīzes centrā),
+        lai siena nenobloķētu pašu staru."""
         col, row = lamp_pos
         _, (dx, dy) = self.lamp_info[lamp_pos]
         return (col * TILE_SIZE + TILE_SIZE / 2 - dx * TILE_SIZE / 2,
@@ -213,14 +192,11 @@ class Level:
 
     def point_in_lamp_light(self, lamp_pos: tuple[int, int],
                             px: float, py: float) -> bool:
-        """Vai punkts (px, py) pikseļos atrodas lampas gaismas zonā.
+        """Vai punkts (px, py) ir lampas gaismas zonā.
 
-        Zona = sektors (110° konus, LIGHT_RADIUS rādiuss) lampas gaismas
-        virzienā NO stiprinājuma sienas iekšējās malas, UN punktam jābūt
-        brīvā redzeslīnijā no lampas (sienas/kastes/aizvērtas durvis
-        gaismu bloķē). Izslēgta lampa neko neapgaismo.
-        Šo pašu zonu zīmē arī klients (client/main.py), tāpēc redzamā
-        gaisma un EXPOSURE detekcijas zona vienmēr sakrīt.
+        Zona = 110° sektors gaismas virzienā + redzeslīnija (sienas bloķē).
+        To pašu zonu zīmē klients, tāpēc redzamais un EXPOSURE sakrīt.
+        Izslēgta lampa neapdraud.
         """
         if self.lamps.get(lamp_pos, 1.0) > 0:
             return False  # izslēgta lampa neapdraud
@@ -236,8 +212,7 @@ class Level:
             limit = math.cos(math.radians(s.LAMP_LIGHT_HALF_ANGLE))
             if cos_angle < limit:
                 return False
-        # Redzeslīnija: ejam pa ~8 px soļiem no lampas līdz punktam;
-        # ja stars šķērso cietu flīzi, punkts ir ēnā.
+        # Redzeslīnija: ejam pa ~8 px soļiem; ja stars trāpa cietā flīzē — ēnā
         steps = max(1, int(distance // 8))
         for i in range(1, steps + 1):
             t = i / steps
@@ -247,7 +222,7 @@ class Level:
         return True
 
     def is_solid_tile(self, col: int, row: int) -> bool:
-        """Vai uz šī lauciņa nedrīkst uzkāpt (siena, kaste, aizvērtas durvis vai ārpus kartes)."""
+        """Vai uz šī lauciņa nedrīkst uzkāpt (siena, kaste, aizvērtas durvis, ārpus kartes)."""
         if col < 0 or row < 0 or col >= self.width or row >= self.height:
             return True
         if (col, row) in self.walls:

@@ -1,4 +1,4 @@
-"""Ad-hoc pārbaude bez loga: kartes + spēles loģika + sargu AI."""
+"""Pašpārbaude bez loga: kartes + spēles loģika + sargu AI."""
 import math
 import sys
 sys.path.insert(0, r"C:\projects\Shadow-Courier")
@@ -12,7 +12,7 @@ from game import settings as s
 
 # 1. Karšu pārbaude
 def flood(rows, start, door_is_wall):
-    """Plūdmaiņa no sākuma lauciņa. Ja door_is_wall=True, durvis skaitās siena."""
+    """Plūdmaiņa no starta. Ja door_is_wall=True, durvis skaitās siena."""
     seen = {start}
     stack = [start]
     while stack:
@@ -58,7 +58,7 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
     seen_closed = flood(rows, start, door_is_wall=True)
     assert exit_pos not in seen_closed, \
         f"Līmenis {i}: KĻŪDA — izeju var sasniegt apejot durvis (atslēga nav vajadzīga)!"
-    # Katrai lampai jābūt pie sienas (vismaz vienam no 4 kaimiņiem jābūt '#')
+    # Katrai lampai jābūt pie sienas
     for r, row in enumerate(rows):
         for c, ch in enumerate(row):
             if ch == "L":
@@ -66,7 +66,7 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
                               rows[r][c - 1], rows[r][c + 1])
                 assert "#" in neighbours, \
                     f"Līmenis {i}: lampa ({c},{r}) nav pie sienas!"
-    # Starta pozīcijas (hitboxi) nedrīkst atrasties sienās
+    # Starta pozīcijas (hitboxi) nedrīkst būt sienās
     lvl = Level(rows, i)
     assert not lvl.rect_hits_solid(*lvl.player_start,
                                    s.PLAYER_HIT_W, s.PLAYER_HIT_H), \
@@ -109,8 +109,7 @@ assert g.lamp_cooldown > 0, "cooldown neieslēdzās"
 print("Lampas izslēgšana: OK")
 
 # 5. LAMP_ALERT: spēlētājs degošas lampas gaismā 0.8 s -> sargu trauksme
-# (Lampa (12,6) 1. līmenī ir tālu no abu sargu startiem, tāpēc lukturu
-# konussi šeit nejauši neiejaucas.)
+# (Lampa (12,6) 1. līmenī ir tālu no sargu startiem, lukturi te nejaucas.)
 g = GameState()
 assert (12, 6) in g.level.lamps, "1. līmenī nav lampas (12,6) — tests jāpārskata"
 place_on_tile(g, 12, 6)
@@ -129,8 +128,8 @@ for gd in g.level.guards:
 assert g.lives == s.START_LIVES, "lampas gaisma vairs nedrīkst noņemt dzīvību!"
 print("LAMP_ALERT: OK (trauksme pēc 0.8 s gaismā, dzīvības netiek noņemtas)")
 
-# 5b. Ja spēlētājs iziet no gaismas pirms 0.8 s — nekādas trauksmes.
-# EXPOSURE josla nepazūd uzreiz, bet lēnām krīt līdz 0 (EXPOSURE_DECAY_TIME).
+# 5b. Ja iziet no gaismas pirms 0.8 s — trauksmes nav.
+# EXPOSURE josla nepazūd uzreiz, bet lēnām krīt līdz 0.
 g = GameState()
 place_on_tile(g, 12, 6)
 for _ in range(30):  # 0.5 s gaismā — mazāk par LAMP_DETECT_TIME
@@ -139,8 +138,8 @@ assert all(gd.state == STATE_PATROL for gd in g.level.guards), \
     "trauksme iestājās pārāk agri"
 assert g.lamp_detect_timer > 0 and g.lamp_exposure > 0
 peak_exposure = g.lamp_exposure
-# Sargus aiznesam un "piespraustējam" tālu prom (pause_timer), lai nejauša
-# patruļa testa laikā neieraudzītu spēlētāju un nejauktu mērījumus
+# Sargus aiznesam un "piespraustējam" tālu prom (pause_timer), lai
+# nejauša patruļa testa laikā neieraudzītu spēlētāju
 for gd in g.level.guards:
     gd.x, gd.y = tile_hitbox_corner(1, 13)
     gd.pause_timer = 999.0
@@ -195,7 +194,7 @@ assert g.level.door_open, "durvis neatvērās ar atslēgu"
 print("Atslēga un durvis: OK (+25)")
 
 # 7. Izeja -> "līmenis izpildīts" ar bonusu, tad next_level() -> līmenis 2
-# (no 3. fāzes izeja strādā tikai ar paņemtu sūtījumu — vispirms paņemam to)
+# (izeja strādā tikai ar paņemtu sūtījumu — vispirms paņemam to)
 from game.game_state import STATUS_LEVEL_COMPLETE
 g = GameState()
 place_on_tile(g, *g.level.package_pos)
@@ -288,7 +287,7 @@ for _ in range(100):
 print("BFS un patruļas mērķi: OK (ceļi eksistē, 100 nejauši mērķi — visi brīvi)")
 
 # 11. PATROL: sargs kustas un nekad neieiet cietā flīzē (simulējam 10 s)
-g = GameState()  # spēlētājs paliek starta vietā (1,1) — tumsā, tālu no sargiem
+g = GameState()  # spēlētājs paliek starta vietā — tumsā, tālu no sargiem
 gd = g.level.guards[0]
 x0, y0 = gd.x, gd.y
 moved = False
@@ -327,7 +326,7 @@ assert (gd.x, gd.y) == (gx, gy), "sargs kustējās brīdinājuma laikā!"
 assert gd.state == STATE_WARNING, "brīdinājums beidzās pārāk agri"
 print("FLASHLIGHT_WARNING: OK (sargs apstājas uz 1.30 s ar '!' ikonu)")
 
-# 12b. Spēlētājs aiz sienas — sargs nereaģē (skata līniju bloķē siena)
+# 12b. Spēlētājs aiz sienas — sargs nereaģē (siena bloķē skata līniju)
 wall_map = ["#####",
             "#.G.#",
             "#####",
@@ -397,8 +396,7 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
         f"Līmenis {i}: M pārāk tuvu startam"
     assert abs(mc - lvl.exit_pos[0]) + abs(mr - lvl.exit_pos[1]) >= 5, \
         f"Līmenis {i}: M pārāk tuvu izejai"
-    # Sasniedzamība ar BFS no starta (durvju šķērsošana nav vajadzīga pārbaudei,
-    # tāpēc durvis pagaidām uzskatām par atvērtām)
+    # Sasniedzamību ar BFS; durvis pagaidām uzskatām par atvērtām
     lvl.door_open = True
     path = find_path(lvl.is_solid_tile, start_tile, lvl.package_pos)
     assert path is not None, f"Līmenis {i}: M nav sasniedzams ar BFS"
@@ -412,7 +410,7 @@ g.update(0.01, 0, 0, False, True)
 assert g.level.package_taken, "E netālu no sūtījuma to nepaņēma"
 # Pārāk tālu — nepaņem
 g = GameState()
-place_on_tile(g, *g.level.exit_pos)  # tālu no M (vismaz 5 flīzes)
+place_on_tile(g, *g.level.exit_pos)  # tālu no M
 assert not g.package_in_range()
 g.update(0.01, 0, 0, False, True)
 assert not g.level.package_taken, "sūtījums paņēmās no pārāk liela attāluma"
@@ -497,8 +495,8 @@ assert (g.player_x, g.player_y) == (hx, hy), "paslēpies spēlētājs pārvietoj
 gd = g.level.guards[0]
 assert gd._can_see_player(g.level, None) is False, \
     "sargs 'ieraudzīja' paslēpušos spēlētāju"
-# Paslēpies degošas lampas gaismā — exposure neaug, trauksme nenotiek,
-# pat ja sargs fiziski pieskaras (hidden = drošs; skat. game_state komentāru)
+# Paslēpies degošas lampas gaismā — exposure neaug un trauksme nenotiek,
+# pat ja sargs fiziski pieskaras (hidden = drošs)
 lamp = next(iter(g.level.lamps))
 place_on_tile(g, *lamp)
 assert g.hidden, "teleports nedrīkst izmest no slēptuves"
@@ -557,11 +555,11 @@ assert g.alert_count == 0, "load_level neatiestatīja alert_count"
 print("alert_count: OK (viens skaitlis uz trauksmi, resetojas load_level)")
 
 # 19. Istabu dizains: K un M ATSEVIŠĶĀS istabās, katrai sava lampa.
-# "Istaba" šeit = grīdas apgabals, ko no pārējās kartes atdala šauras
-# (1 flīzes) eejas — heuristika: flīze ir "eeja", ja tai ciets blakus
-# gan pa kreisi+labi, gan augšā+apakšā. Plūdmaiņa, kas neiet caur eejām,
-# dod istabas iekšpusi. Tas nav pilns telpu analīzers, bet mūsu kartēm
-# (plašas istabas + 1-flīžu koridori) darbojas droši.
+# "Istaba" šeit = grīdas apgabals, ko atdala šauras (1 flīzes) eejas.
+# Heuristika: flīze ir "eeja", ja tai ciets blakus gan pa kreisi+labi,
+# gan augšā+apakšā. Plūdmaiņa, kas neiet caur eejām, dod istabas
+# iekšpusi. Tas nav pilns telpu analīzers, bet mūsu kartēm (plašas
+# istabas + 1-flīžu koridori) darbojas.
 def _is_passage(rows: list[str], c: int, r: int) -> bool:
     """Vai flīze ir šaura eeja (ciets gan horizontāli abās pusēs, gan vertikāli)?"""
     def solid(cc: int, rr: int) -> bool:
@@ -598,7 +596,7 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
         f"Līmenis {i}: atslēgas istabā nav lampas"
     assert any(lamp in m_region for lamp in lvl.lamps), \
         f"Līmenis {i}: sūtījuma istabā nav lampas"
-    # K sasniedzama PIRMS durvīm (durvis = cieta flīze, door_open=False)
+    # K sasniedzama PIRMS durvīm (durvis = cieta flīze)
     start_tile = lvl.tile_at_pixel(*lvl.player_start)
     assert find_path(lvl.is_solid_tile, start_tile, lvl.key_pos) is not None, \
         f"Līmenis {i}: atslēga nav sasniedzama pirms durvju atvēršanas"
@@ -613,8 +611,8 @@ for i, rows in enumerate(LEVEL_MAPS, 1):
         ahead = (lamp[0] + direction[0], lamp[1] + direction[1])
         assert not lvl.is_solid_tile(*ahead), \
             f"Līmenis {i}: lampa {lamp} spīd cietā flīzē {ahead}"
-        # Gaismas sākumpunkts ir tieši uz kopējās malas starp lampas un
-        # sienas flīzi — korpuss NETIEK zīmēts koridora vidū
+        # Gaismas sākumpunkts tieši uz kopējās malas starp lampas un
+        # sienas flīzi — korpuss nezīmējas koridora vidū
         ox, oy = lvl.lamp_light_origin(lamp)
         assert lvl.tile_at_pixel(ox - direction[0] * 2,
                                  oy - direction[1] * 2) == wall, \
