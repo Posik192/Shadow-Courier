@@ -26,7 +26,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from api.db import get_connection, get_top_scores, get_player_page
+from api.db import (get_connection, get_top_scores, get_player_page,
+                    get_progress, save_progress)
 
 # --- Ierobežojumi ievaddatiem ---
 MAX_NAME_LEN = 20
@@ -130,6 +131,33 @@ def player_stats(name: str) -> dict:
             "SELECT COUNT(*), MAX(score) FROM scores WHERE player = ?",
             (name,)).fetchone()
     return {"name": name, "games": row[0], "best_score": row[1] or 0}
+
+
+class ProgressIn(BaseModel):
+    """Cik līmeņi pabeigti (1-3)."""
+
+    completed: int = Field(ge=0, le=99)
+
+
+@app.get("/players/{name}/progress")
+def read_progress(name: str, token: str = Header()) -> dict:
+    """Spēlētāja progress — tikai pats sev, tāpēc prasa tokenu."""
+    with get_connection() as conn:
+        owner = player_by_token(conn, token)
+    if owner is None or owner != name:
+        raise HTTPException(401, "Nav pieteicies")
+    return {"name": name, "completed": get_progress(name)}
+
+
+@app.post("/players/{name}/progress", status_code=201)
+def write_progress(name: str, item: ProgressIn, token: str = Header()) -> dict:
+    """Saglabā progresu serverī. Tikai pats sev, un tikai uz augšu."""
+    with get_connection() as conn:
+        owner = player_by_token(conn, token)
+    if owner is None or owner != name:
+        raise HTTPException(401, "Nav pieteicies")
+    save_progress(name, item.completed)
+    return {"name": name, "completed": get_progress(name)}
 
 
 # --- Mājaslapas (Jinja2 veidnes) ---

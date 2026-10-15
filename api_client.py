@@ -73,3 +73,26 @@ def send_score(token: str, score: int) -> bool:
         return r.status_code == 201
     except requests.RequestException:
         return False  # serveris izslēgts — rekords netiek sūtīts
+
+
+def get_progress(name: str, token: str) -> int | None:
+    """Cik līmeņus pabeidzis (no servera). None, ja serveris nepieejams."""
+    try:
+        r = requests.get(f"{SERVER}/players/{name}/progress",
+                         headers={"token": token}, timeout=TIMEOUT)
+        if r.status_code == 200:
+            return r.json()["completed"]
+    except requests.RequestException:
+        pass
+    return None
+
+
+def save_progress(name: str, token: str, completed: int) -> bool:
+    """Aizsūta progresu serverim. True, ja saglabāts."""
+    try:
+        r = requests.post(f"{SERVER}/players/{name}/progress",
+                          json={"completed": completed},
+                          headers={"token": token}, timeout=TIMEOUT)
+        return r.status_code == 201
+    except requests.RequestException:
+        return False

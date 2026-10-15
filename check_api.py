@@ -87,6 +87,24 @@ def main() -> None:
     r = requests.get(f"{BASE}/static/style.css", timeout=5)
     parbaudiet("/static/style.css atbild 200", r.status_code == 200)
 
+    # --- Progress (līmeņi atceras serverī) ---
+    h = {"token": token}
+    r = requests.post(f"{BASE}/players/testotajs/progress",
+                      json={"completed": 2}, headers=h, timeout=5)
+    parbaudiet("progress saglabā -> 201", r.status_code == 201)
+    r = requests.get(f"{BASE}/players/testotajs/progress", headers=h,
+                     timeout=5)
+    parbaudiet("progress atgriež 2",
+               r.status_code == 200 and r.json()["completed"] == 2)
+    # Zemāku vērtību nedrīkst pieņemt (progress tikai uz augšu)
+    r = requests.post(f"{BASE}/players/testotajs/progress",
+                      json={"completed": 1}, headers=h, timeout=5)
+    parbaudiet("progress uz leju nemainās", r.json()["completed"] == 2)
+    # Svešs tokens -> 401
+    r = requests.get(f"{BASE}/players/testotajs/progress",
+                     headers={"token": "nepareizs"}, timeout=5)
+    parbaudiet("progress bez tokena -> 401", r.status_code == 401)
+
     print("\nVISI SERVERA TESTI IZJAUTI ✅")
 
 

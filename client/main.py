@@ -1451,7 +1451,7 @@ def ask_credentials() -> dict:
     - Vārdu saglabājam player_name.txt, lai nākamreiz piedāvātu to pašu.
     Headless režīmā (testi) nejautājam neko — tur neviens nevar atbildēt.
     """
-    player = {"name": "PLAYER", "password": "", "token": None}
+    player = {"name": "PLAYER", "password": "", "token": None, "completed": 0}
     if os.environ.get("SDL_VIDEODRIVER") == "dummy":
         return player
     # Pēdējais lietotais vārds — lai nākamreiz nav jāraksta no jauna
@@ -1510,6 +1510,17 @@ def send_score_to_server(ui: dict, state: GameState, player: dict) -> None:
         api_client.send_score(token, state.score)
 
 
+def save_progress_to_server(state: GameState, player: dict) -> None:
+    """Pēc līmeņa pabeigšanas aizsūtām progresu serverim (ja ielogots).
+    Tā nākamreiz ielogojoties līmeņi paliek atbloķēti."""
+    if not player.get("token"):
+        return  # bez konta progress nekur netiek sūtīts
+    if state.level_number > player.get("completed", 0):
+        player["completed"] = state.level_number
+        api_client.save_progress(player["name"], player["token"],
+                                 player["completed"])
+
+
 def main() -> None:
     """Spēles galvenā funkcija: atver logu un griež spēles ciklu."""
     # Vārdu un paroli jautājam PIRMS pygame.init() — konsolē
@@ -1546,6 +1557,13 @@ def main() -> None:
     }
 
     current_screen = SCREEN_MENU
+    # Progress no servera: ja ielogojies, atbloķējam jau pabeigtos līmeņus
+    if player.get("token"):
+        server_completed = api_client.get_progress(player["name"],
+                                                   player["token"])
+        if server_completed:
+            player["completed"] = server_completed
+            ui["completed_levels"] = set(range(1, server_completed + 1))
     player_facing = (0, 1)  # kurp spēlētājs skatās (sākumā — uz leju)
     player_moving = False   # vai spēlētājs kustas (animācijai)
 
@@ -1585,12 +1603,14 @@ def main() -> None:
             elif state.status == STATUS_WON:
                 ui["completed_levels"].add(state.level_number)
                 remember_rank(ui, state)
+                save_progress_to_server(state, player)
                 send_score_to_server(ui, state, player)
                 current_screen = SCREEN_WON
                 ui["selection"] = 0
             elif state.status == STATUS_LEVEL_COMPLETE:
                 ui["completed_levels"].add(state.level_number)
                 remember_rank(ui, state)
+                save_progress_to_server(state, player)
                 current_screen = SCREEN_LEVEL_COMPLETE
                 ui["selection"] = 0
         else:

@@ -19,14 +19,36 @@ def get_connection() -> sqlite3.Connection:
             player TEXT NOT NULL,
             score INTEGER NOT NULL
         )""")
-    # Spēlētāju tabula: parole tikai kā hash
+    # Spēlētāju tabula: parole tikai kā hash, completed = cik līmeņi pabeigti
     conn.execute("""
         CREATE TABLE IF NOT EXISTS players (
             name TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
-            token TEXT
+            token TEXT,
+            completed INTEGER DEFAULT 0
         )""")
+    # Vecām datubāzēm kolonnas completed var nebūt — pievienojam
+    try:
+        conn.execute("ALTER TABLE players ADD COLUMN completed INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # kolonna jau ir — viss kārtībā
     return conn
+
+
+def get_progress(name: str) -> int:
+    """Cik līmeņus spēlētājs pabeidzis (0 = neviens). Ja nav spēlētāja — 0."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT completed FROM players WHERE name = ?", (name,)).fetchone()
+    return row[0] if row else 0
+
+
+def save_progress(name: str, completed: int) -> None:
+    """Saglabā progresu, bet tikai uz augšu — atpakaļ nekad nenulējam."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE players SET completed = MAX(completed, ?) WHERE name = ?",
+            (completed, name))
 
 
 def get_top_scores(limit: int = 10) -> list[dict]:
