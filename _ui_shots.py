@@ -19,6 +19,7 @@ fonts = {
     "big": pygame.font.SysFont("consolas", 44, bold=True),
     "small": pygame.font.SysFont("consolas", 16),
 }
+fonts["hud"] = cm.load_hud_fonts()
 sprites = cm.load_sprites()
 ui = {
     "selection": 0,

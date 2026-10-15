@@ -5,7 +5,8 @@ os.environ["SDL_VIDEODRIVER"] = "dummy"
 import pygame
 from game import settings as gs
 from game.game_state import GameState
-from client.main import HUD_HEIGHT, draw_world, draw_hud, load_sprites
+from client.main import HUD_HEIGHT, draw_world, draw_hud, load_sprites, \
+    load_hud_fonts
 
 pygame.init()
 state = GameState()
@@ -14,6 +15,7 @@ fonts = {
     "big": pygame.font.SysFont("consolas", 44, bold=True),
     "small": pygame.font.SysFont("consolas", 16),
 }
+fonts["hud"] = load_hud_fonts()
 
 for level_num in (1, 2, 3):
     state.load_level(level_num)

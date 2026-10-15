@@ -22,7 +22,7 @@ from game.rank import better_rank
 
 # --- LOGA UZSTĀDĪJUMI ---
 FPS = 60           # kadri sekundē
-HUD_HEIGHT = 64    # apakšējā informācijas josla (pikseļi)
+HUD_HEIGHT = 112   # apakšējā HUD josla (pikseļi); karte zīmējas virs tās
 TOP_BAR_HEIGHT = 30  # augšējā plānā josla (zīmējas PĀRKLĀJ pasaulei)
 
 # --- TĒLU IZMĒRI UN HITBOXI (līgums ar game/ moduli) ---
@@ -65,6 +65,25 @@ UI_TEXT = (232, 227, 211)   # krēmkrāsas gaišs teksts (#e8e3d3)
 UI_DIM = (126, 128, 134)    # pelēks palīgteksts
 UI_LOCKED = (88, 90, 96)    # bloķēts elements
 UI_ACCENT = (232, 185, 60)  # VIENS dzeltens akcents (#e8b93c)
+
+# --- APAKŠĒJĀS HUD JOSLAS STILS (4 sadaļas pēc dizaina atsauces) ---
+# Sadaļu virsraksti un vērtības rakstītas ar treknu Verdana fontu,
+# kas nokopēts projektā — tā izskats ir vienāds jebkurā datorā.
+HUD_FONT_PATH = os.path.join("assets", "fonts", "VerdanaBold.ttf")
+HUD_TITLE_SIZE = 16          # sadaļu virsraksti (HEALTH, COINS, ...)
+HUD_VALUE_SIZE = 30          # lielās vērtības ("READY", "85%", "2 / 5")
+HUD_BG = (17, 22, 25)        # joslas fons (#111619)
+HUD_TEXT = (244, 243, 235)   # gandrīz balts teksts (#F4F3EB)
+HUD_DIVIDER = (42, 49, 56)   # plānās vertikālās dalītājlīnijas (#2a3138)
+HUD_PADDING = 16             # sadaļas iekšējā atstarpe no malām (px)
+HUD_READY = (90, 200, 120)   # zaļš "READY" un gatavas uzlādes josla
+HUD_DANGER = (255, 59, 48)   # sarkans briesmu aizpildījums (#ff3b30)
+HUD_DANGER_BG = (58, 18, 16) # EXPOSURE sadaļas fons pie >= 75% (#3a1210)
+HEART_RED = (228, 72, 60)    # aizpildītā sirds
+HEART_EMPTY = (150, 156, 162)  # zaudētās sirds gaišā kontūra
+HUD_BAR_EMPTY = (40, 46, 52) # tukšā progresa joslas daļa
+EXPOSURE_CRITICAL = 0.75     # no šīs vērtības EXPOSURE ir "bīstams" stāvoklis
+PROMPT_LINE_HEIGHT = 28      # E-uzvednes rinda tieši virs HUD joslas
 
 # --- APGAISMOJUMA UZSTĀDĪJUMI ---
 DARKNESS_ALPHA = 110        # cik tumša ir noliktava ārpus gaismas (0–255)
@@ -632,16 +651,6 @@ def draw_world(window: pygame.Surface, state: GameState,
 # ============================================================
 
 
-def _draw_hud_icon(window: pygame.Surface, sprite: pygame.Surface | None,
-                   x: int, y: int, fallback_color: tuple) -> None:
-    """Uzzīmē vienu HUD ikonu; ja bildes nav — zīmē mazu kvadrātu."""
-    if sprite is None:
-        pygame.draw.rect(window, fallback_color,
-                         (x, y, HUD_ICON_SIZE, HUD_ICON_SIZE))
-    else:
-        window.blit(sprite, (x, y))
-
-
 def draw_top_bar(window: pygame.Surface, state: GameState,
                  fonts: dict) -> None:
     """Plānā augšējā josla: nosaukums, līmenis, punkti, atslēga."""
@@ -662,84 +671,227 @@ def draw_top_bar(window: pygame.Surface, state: GameState,
                       (TOP_BAR_HEIGHT - img.get_height()) // 2))
 
 
+def load_hud_fonts() -> dict:
+    """Ielādē HUD joslas fontus no assets/fonts/ (nokopēts Windows fonts).
+
+    Ja fails pazudis — krītam atpakaļ uz sistēmas fontu, lai spēle nestātos.
+    """
+    if os.path.exists(HUD_FONT_PATH):
+        return {
+            "title": pygame.font.Font(HUD_FONT_PATH, HUD_TITLE_SIZE),
+            "value": pygame.font.Font(HUD_FONT_PATH, HUD_VALUE_SIZE),
+        }
+    return {
+        "title": pygame.font.SysFont("verdana", HUD_TITLE_SIZE, bold=True),
+        "value": pygame.font.SysFont("verdana", HUD_VALUE_SIZE, bold=True),
+    }
+
+
+def _draw_heart(window: pygame.Surface, cx: int, cy: int, size: int,
+                filled: bool) -> None:
+    """Viena sirds (~size px): divi apļi augšā un rombs apakšā.
+
+    filled=True — aizpildīta sarkana (atlikusi dzīvība);
+    False — tikai gaiša kontūra (zaudēta dzīvība).
+    """
+    r = size // 4 + 1                      # apļu rādiuss
+    color = HEART_RED if filled else HEART_EMPTY
+    outline = 0 if filled else 2           # 0 = aizpildīts, 2 = tikai kontūra
+    pygame.draw.circle(window, color, (cx - r + 1, cy - 2), r, outline)
+    pygame.draw.circle(window, color, (cx + r - 1, cy - 2), r, outline)
+    pygame.draw.polygon(window, color,
+                        [(cx - 2 * r + 1, cy - 3), (cx + 2 * r - 1, cy - 3),
+                         (cx, cy + size // 2)], outline)
+
+
+def _draw_warning_triangle(window: pygame.Surface, cx: int, cy: int,
+                           color: tuple) -> None:
+    """Brīdinājuma trijstūris ar tumšu "!" iekšā (zīmēts ar polygon)."""
+    r = 10
+    pygame.draw.polygon(window, color,
+                        [(cx, cy - r), (cx - r + 1, cy + r - 2),
+                         (cx + r - 1, cy + r - 2)])
+    pygame.draw.rect(window, HUD_BG, (cx - 1, cy - 5, 3, 8))   # "!" svītra
+    pygame.draw.rect(window, HUD_BG, (cx - 1, cy + 4, 3, 3))   # "!" punkts
+
+
+def _draw_section_title(window: pygame.Surface, fonts: dict, text: str,
+                        x: int, y: int) -> None:
+    """Sadaļas virsraksts (HEALTH, COINS, LAMP, EXPOSURE)."""
+    window.blit(fonts["hud"]["title"].render(text, True, HUD_TEXT), (x, y))
+
+
+def _draw_hud_health(window: pygame.Surface, state: GameState,
+                     fonts: dict, bounds: tuple, hud_top: int) -> None:
+    """HEALTH sadaļa: 3 lielas sirdis (pilnas sarkanas, zaudētās — kontūra)."""
+    x0, _ = bounds
+    _draw_section_title(window, fonts, "HEALTH", x0 + HUD_PADDING,
+                        hud_top + 12)
+    size, gap = 28, 10
+    cy = hud_top + 66
+    for i in range(START_LIVES):
+        cx = x0 + HUD_PADDING + size // 2 + i * (size + gap)
+        _draw_heart(window, cx, cy, size, filled=(i < state.lives))
+
+
+def _draw_hud_coins(window: pygame.Surface, state: GameState,
+                    fonts: dict, sprites: dict, bounds: tuple,
+                    hud_top: int) -> None:
+    """COINS sadaļa: zelta monētas ikona + lielā vērtība "2 / 5"."""
+    x0, _ = bounds
+    _draw_section_title(window, fonts, "COINS", x0 + HUD_PADDING,
+                        hud_top + 12)
+    icon_y = hud_top + 54
+    coin = sprites.get("ui_coin")
+    if coin is not None:
+        window.blit(coin, (x0 + HUD_PADDING, icon_y))
+    else:
+        # Rezerves variants, ja nav bildes: zelta aplis ar kontūru
+        center = (x0 + HUD_PADDING + 12, icon_y + 12)
+        pygame.draw.circle(window, UI_ACCENT, center, 12)
+        pygame.draw.circle(window, (150, 112, 25), center, 12, 2)
+    total = state.coins_collected + len(state.level.coins)
+    img = fonts["hud"]["value"].render(
+        f"{state.coins_collected} / {total}", True, HUD_TEXT)
+    window.blit(img, (x0 + HUD_PADDING + 36, icon_y + 12
+                      - img.get_height() // 2))
+
+
+def _draw_hud_lamp(window: pygame.Surface, state: GameState,
+                   fonts: dict, bounds: tuple, hud_top: int) -> None:
+    """LAMP sadaļa: taustiņa rāmītis SPACE + READY vai atlikušais laiks.
+
+    Kad slēdzis uzlādējas (cooldown), zem rāmīša ir plāna josla,
+    kas piepildās, tuvojoties gatavībai. Rāmīša un teksta pozīcijas
+    ir fiksētas — nekas nepārbīdās, mainoties stāvoklim.
+    """
+    x0, x1 = bounds
+    _draw_section_title(window, fonts, "LAMP", x0 + HUD_PADDING, hud_top + 12)
+    ready = state.lamp_cooldown <= 0
+    key_color = HUD_TEXT if ready else UI_LOCKED  # cooldown = pieklusināts
+
+    # Taustiņa rāmītis ar uzrakstu SPACE
+    key_img = fonts["hud"]["title"].render("SPACE", True, key_color)
+    key_rect = pygame.Rect(x0 + HUD_PADDING, hud_top + 42,
+                           key_img.get_width() + 14, key_img.get_height() + 8)
+    pygame.draw.rect(window, key_color, key_rect, 1, border_radius=4)
+    window.blit(key_img, (key_rect.x + 7, key_rect.y + 4))
+
+    if ready:
+        img = fonts["hud"]["value"].render("READY", True, HUD_READY)
+    else:
+        img = fonts["hud"]["value"].render(
+            f"{state.lamp_cooldown:.1f} s", True, HUD_TEXT)
+    window.blit(img, (key_rect.right + 12,
+                      key_rect.centery - img.get_height() // 2))
+
+    if not ready:
+        # Plāna uzlādes josla (~10 px): piepildās, tuvojoties gatavībai
+        bar_y = key_rect.bottom + 8
+        bar_w = x1 - HUD_PADDING - key_rect.x
+        pygame.draw.rect(window, HUD_BAR_EMPTY,
+                         (key_rect.x, bar_y, bar_w, 10))
+        part = 1.0 - state.lamp_cooldown / gs.LAMP_COOLDOWN
+        if part > 0:
+            pygame.draw.rect(window, HUD_READY,
+                             (key_rect.x, bar_y, int(bar_w * part), 10))
+
+
+def _draw_hud_exposure(window: pygame.Surface, state: GameState,
+                       fonts: dict, bounds: tuple, hud_top: int) -> None:
+    """EXPOSURE sadaļa: procenti + plata progresa josla + brīdinājums.
+
+    0%: mierīgs stāvoklis. >0%: dzintara aizpildījums + trijstūris un
+    "MOVE INTO SHADOW". >=75%: sarkans aizpildījums, sadaļai tumši
+    sarkans fons un spilgta sarkana līnija kreisajā malā.
+    Brīdinājuma vieta ir rezervēta izkārtojumā — nekas nepārbīdās.
+    """
+    x0, x1 = bounds
+    exposure = max(0.0, min(1.0, state.lamp_exposure))
+    critical = exposure >= EXPOSURE_CRITICAL
+    pad = HUD_PADDING + 4  # mazliet lielāka atstarpe sarkanas malas dēļ
+
+    if critical:
+        pygame.draw.rect(window, HUD_DANGER_BG,
+                         (x0 + 1, hud_top + 1, x1 - x0 - 1, HUD_HEIGHT - 2))
+        pygame.draw.rect(window, HUD_DANGER,
+                         (x0 + 1, hud_top + 1, 4, HUD_HEIGHT - 2))
+
+    # Virsraksts pa kreisi, lielie procenti pa labi (vienā augstumā)
+    _draw_section_title(window, fonts, "EXPOSURE", x0 + pad, hud_top + 12)
+    pct_color = HUD_DANGER if critical else HUD_TEXT
+    pct_img = fonts["hud"]["value"].render(
+        f"{round(exposure * 100)}%", True, pct_color)
+    window.blit(pct_img, (x1 - HUD_PADDING - pct_img.get_width(),
+                          hud_top + 8))
+
+    # Progresa josla: tukšā daļa tumši pelēka ar plānu kontūru
+    bar_x = x0 + pad
+    bar_y = hud_top + 52
+    bar_w = x1 - HUD_PADDING - bar_x
+    pygame.draw.rect(window, HUD_BAR_EMPTY, (bar_x, bar_y, bar_w, 18))
+    pygame.draw.rect(window, HUD_DIVIDER, (bar_x, bar_y, bar_w, 18), 1)
+    if exposure > 0:
+        fill = HUD_DANGER if critical else UI_ACCENT
+        pygame.draw.rect(window, fill,
+                         (bar_x + 1, bar_y + 1,
+                          int((bar_w - 2) * exposure), 16))
+
+    # Brīdinājums (vieta rezervēta jau izkārtojumā)
+    if exposure > 0:
+        color = HUD_DANGER if critical else UI_ACCENT
+        _draw_warning_triangle(window, bar_x + 10, bar_y + 34, color)
+        warn_font = fonts["hud"]["value"] if critical \
+            else fonts["hud"]["title"]
+        warn_img = warn_font.render("MOVE INTO SHADOW", True, color)
+        window.blit(warn_img, (bar_x + 28,
+                               bar_y + 34 - warn_img.get_height() // 2))
+
+
 def draw_hud(window: pygame.Surface, state: GameState,
              fonts: dict, sprites: dict) -> None:
-    """Uzzīmē HUD: apakšējo joslu un augšējo plāno joslu.
+    """Uzzīmē HUD: apakšējo 4-sadaļu joslu un augšējo plāno joslu.
 
-    Apakšējā josla (HUD_HEIGHT px): sirdis (dzīvības), COINS x/y,
-    lampas slēdža uzlādes josla ar READY, gaismas brīdinājums, paziņojumi.
+    Apakšējā josla (HUD_HEIGHT px, pilns loga platums): HEALTH (sirdis),
+    COINS (monētas), LAMP (slēdža gatavība), EXPOSURE (gaismas risks).
+    E-uzvedne un paziņojums zīmējas plānā rindā tieši virs joslas.
     """
     width = window.get_width()
     font = fonts["small"]
-    hud_top = state.level.height * gs.TILE_SIZE
-    row1_y = hud_top + 8    # 1. rinda: ikonas
-    row2_y = hud_top + 40   # 2. rinda: joslas
+    hud_top = window.get_height() - HUD_HEIGHT
 
-    # Joslas fons — tumšs, ar plānu gaišu līniju virsotnē
-    pygame.draw.rect(window, (18, 21, 26), (0, hud_top, width, HUD_HEIGHT))
-    pygame.draw.line(window, UI_LINE, (0, hud_top), (width, hud_top), 1)
-
-    x = 12
-
-    # --- Sirdis (dzīvības): pilnas, zaudētās — tumšas ---
-    for i in range(START_LIVES):
-        if i < state.lives:
-            heart = sprites.get("ui_heart")
-        else:
-            heart = sprites.get("ui_heart_dark")
-        _draw_hud_icon(window, heart, x, row1_y, COLOR_BAD)
-        x += HUD_ICON_SIZE + 5
-    x += 12
-
-    # --- Monētas: "COINS X/Y" (paņemtās / visas šajā līmenī) ---
-    _draw_hud_icon(window, sprites.get("ui_coin"), x, row1_y, COLOR_COIN)
-    x += HUD_ICON_SIZE + 6
-    total_coins = state.coins_collected + len(state.level.coins)
-    coin_img = font.render(f"COINS {state.coins_collected}/{total_coins}",
-                           True, UI_TEXT)
-    window.blit(coin_img, (x, row1_y + 3))
-
-    # --- Paziņojums (piem., "Vajag atslēgu!") — 1. rindas labajā pusē ---
-    if state.message:
-        msg_img = font.render(state.message, True, UI_ACCENT)
-        window.blit(msg_img, (width - msg_img.get_width() - 12, row1_y + 3))
-
-    # --- 2. rinda: lampas slēdža uzlādes josla ---
-    x2 = 12
-    label = font.render("LAMP", True, UI_DIM)
-    window.blit(label, (x2, row2_y))
-    x2 += label.get_width() + 10
-    bar_w, bar_h = 110, 10
-    bar_y = row2_y + 3
-    pygame.draw.rect(window, (44, 48, 54), (x2, bar_y, bar_w, bar_h))
-    if state.lamp_cooldown > 0:
-        # Josla piepildās, kamēr slēdzis uzlādējas
-        part = 1.0 - state.lamp_cooldown / gs.LAMP_COOLDOWN
-    else:
-        part = 1.0  # pilna = gatavs lietošanai
-    if part > 0:
-        pygame.draw.rect(window, UI_ACCENT,
-                         (x2, bar_y, int(bar_w * part), bar_h))
-    if part >= 1.0:
-        window.blit(font.render("READY", True, UI_ACCENT),
-                    (x2 + bar_w + 10, row2_y))
-
-    # --- 2. rinda: EXPOSURE josla (cik tuvu lampas trauksmei) ---
-    exp_x = x2 + bar_w + 70
-    exp_label = font.render("EXPOSURE", True, UI_DIM)
-    window.blit(exp_label, (exp_x, row2_y))
-    exp_bar_x = exp_x + exp_label.get_width() + 10
-    pygame.draw.rect(window, (44, 48, 54), (exp_bar_x, bar_y, 100, bar_h))
-    if state.lamp_exposure > 0:
-        pygame.draw.rect(window, UI_ACCENT,
-                         (exp_bar_x, bar_y,
-                          int(100 * state.lamp_exposure), bar_h))
-
-    # --- 2. rinda: interakcijas prompts ("E PICK UP PACKAGE" u.tml.) ---
+    # E-uzvedne un paziņojums ("E PICK UP PACKAGE", "Vajag atslēgu!" u.tml.)
     prompt = interaction_prompt(state)
     if prompt:
         prompt_img = font.render(prompt, True, UI_ACCENT)
-        window.blit(prompt_img, (exp_bar_x + 130, row2_y))
+        window.blit(prompt_img, (12, hud_top - PROMPT_LINE_HEIGHT + 6))
+    if state.message:
+        msg_img = font.render(state.message, True, UI_ACCENT)
+        window.blit(msg_img, (width - msg_img.get_width() - 12,
+                              hud_top - PROMPT_LINE_HEIGHT + 6))
+
+    # Sadaļu robežas: ~17% / 16% / 23% / 44% no loga platuma
+    health_w = int(width * 0.17)
+    coins_w = int(width * 0.16)
+    lamp_w = int(width * 0.23)
+    bounds = [(0, health_w),
+              (health_w, health_w + coins_w),
+              (health_w + coins_w, health_w + coins_w + lamp_w),
+              (health_w + coins_w + lamp_w, width)]
+
+    # Joslas fons — vienkrāsains tumšs ar minimāli noapaļotiem stūriem
+    pygame.draw.rect(window, HUD_BG, (0, hud_top, width, HUD_HEIGHT),
+                     border_radius=6)
+
+    # Plāni vertikālie dalītāji starp sadaļām
+    for x, _ in bounds[1:]:
+        pygame.draw.line(window, HUD_DIVIDER,
+                         (x, hud_top + 12), (x, hud_top + HUD_HEIGHT - 12), 1)
+
+    _draw_hud_health(window, state, fonts, bounds[0], hud_top)
+    _draw_hud_coins(window, state, fonts, sprites, bounds[1], hud_top)
+    _draw_hud_lamp(window, state, fonts, bounds[2], hud_top)
+    _draw_hud_exposure(window, state, fonts, bounds[3], hud_top)
 
     # Augšējā plānā josla (zīmējas pār pasaules augšu)
     draw_top_bar(window, state, fonts)
@@ -1283,6 +1435,7 @@ def main() -> None:
         "small": pygame.font.SysFont("consolas", 16),
     }
     sprites = load_sprites()
+    fonts["hud"] = load_hud_fonts()  # treknais Verdana apakšējai joslai
 
     # Klienta pusē glabājamie UI dati (spēles loģikai tie nav vajadzīgi)
     ui = {

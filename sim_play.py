@@ -6,7 +6,7 @@ import pygame
 from game import settings as gs
 from game.game_state import GameState
 from client.main import (HUD_HEIGHT, draw_world, draw_hud, load_sprites,
-                         draw_level_complete)
+                         draw_level_complete, load_hud_fonts)
 
 pygame.init()
 state = GameState()
@@ -19,6 +19,7 @@ fonts = {
     "big": pygame.font.SysFont("consolas", 44, bold=True),
     "small": pygame.font.SysFont("consolas", 16),
 }
+fonts["hud"] = load_hud_fonts()
 
 clock = pygame.time.Clock()
 # 3600 kadri = 60 sekundes spēles
