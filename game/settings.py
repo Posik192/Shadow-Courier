@@ -23,7 +23,9 @@ START_LIVES = 3       # HUD atmiņai; noķeršana tagad = uzreiz game over
 
 # --- LAMPAS GAISMA IZSAUC TRAUKSMI (1. mehānika) ---
 LIGHT_RADIUS = 120        # lampas detect rādiuss — ja skolotājs prasa, mainu šeit
-LAMP_DETECT_TIME = 0.8    # cik ilgi jāstāv gaismā līdz trauksmei — mainu šeit
+LAMP_DETECT_TIME = 0.8    # 1. līmenis: cik ilgi jāstāv gaismā līdz trauksmei
+# Grūtākajos līmeņos laiks ēnā ir īsāks (tā solīts spēles tabulā):
+LAMP_DETECT_TIMES = [0.8, 0.7, 0.6]  # sekundes pa līmeņiem 1, 2, 3
 LAMP_LIGHT_HALF_ANGLE = 55  # lampas sektora puse (kopā 110° konuss)
 
 # --- LAMPU ATSLĒGŠANA (2. mehānika) ---

@@ -162,16 +162,18 @@ class GameState:
         alarm_active = any(guard.state != STATE_PATROL
                            for guard in self.level.guards)
         in_light = self._player_in_light() and not self.hidden
+        # Grūtākajā līmenī gaismā drīkst stāvēt īsāk (0.8 / 0.7 / 0.6 s)
+        detect_time = s.LAMP_DETECT_TIMES[self.level_number - 1]
         if in_light and not alarm_active:
             self.lamp_detect_timer += dt
-            if self.lamp_detect_timer >= s.LAMP_DETECT_TIME:
+            if self.lamp_detect_timer >= detect_time:
                 self._raise_lamp_alarm()
         else:
             self.lamp_detect_timer = 0.0  # ārā no gaismas — taimeris uz 0
         # EXPOSURE josla: gaismā aug līdz 1.0, ārpus krīt lēnām
         if in_light:
             self.lamp_exposure = min(1.0, self.lamp_exposure
-                                     + dt / s.LAMP_DETECT_TIME)
+                                     + dt / detect_time)
         else:
             self.lamp_exposure = max(0.0, self.lamp_exposure
                                      - dt / s.EXPOSURE_DECAY_TIME)

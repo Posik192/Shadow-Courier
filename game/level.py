@@ -24,7 +24,7 @@ import math
 # --- TRĪS LĪMEŅU KARTES (24x16, grūtība aug) ---
 
 LEVEL_MAPS = [
-    # 1. līmenis: liela noliktavas zāle, 2 sargi, 6 lampas, 5 monētas.
+    # 1. līmenis: liela noliktavas zāle, 2 sargi, 5 lampas, 5 monētas.
     # Atslēga ZR istabā, sūtījums D vidējā istabā — katrai sava lampa.
     [
         "########################",
@@ -37,7 +37,7 @@ LEVEL_MAPS = [
         "#..xxH...xx............#",
         "#..xx....xx....L..V.C..#",
         "#..............#.xxx...#",
-        "#CH....G.......#L......#",
+        "#CH....G.......#.......#",
         "###.########.########D##",
         "#.......#.....xx...#...#",
         "#L.K....#L....xx...#.E.#",
@@ -45,7 +45,7 @@ LEVEL_MAPS = [
         "########################",
     ],
     # 2. līmenis: vairākas telpas, 3 sargi (2 vertikālie + 1 horizontālais),
-    # 5 lampas, 5 monētas. Izejas telpa ZR aiz durvīm.
+    # 6 lampas, 5 monētas. Izejas telpa ZR aiz durvīm.
     [
         "########################",
         "#P....#...C...#.....L..#",
@@ -54,7 +54,7 @@ LEVEL_MAPS = [
         "#L........xx..#.......C#",
         "#.....#L.......###.#####",
         "#C....#.......####..####",
-        "#.....#................#",
+        "#.....#..............L.#",
         "#..xx....xx.....xx...V.#",
         "#..xxH...xx..C..xx.....#",
         "#.....G.......L........#",
